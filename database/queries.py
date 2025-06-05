@@ -74,6 +74,18 @@ def add_purchase(item_id, brand_id, quantity, unit, unit_price, total_amount, da
     """添加进货记录"""
     conn = get_connection()
     cursor = conn.cursor()
+    # 检查 item_id 是否已经被其他品牌使用
+    cursor.execute(
+        """
+        SELECT brand_id FROM purchases WHERE item_id = ?
+        """,
+        (item_id,)
+    )
+    existing_brand = cursor.fetchone()
+    if existing_brand and existing_brand[0] != brand_id:
+        conn.close()
+        raise ValueError(f"商品 (item_id: {item_id}) 已被品牌 (brand_id: {existing_brand[0]}) 使用，不能重复关联！")
+    
     cursor.execute(
         """
         INSERT INTO purchases (item_id, brand_id, quantity, unit, unit_price, total_amount, date, remarks)

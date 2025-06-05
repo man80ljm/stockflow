@@ -2,6 +2,23 @@ import sqlite3
 from datetime import datetime
 from database.db_setup import DB_PATH
 
+class Brand:
+    def __init__(self, brand_id, brand_name, created_at):
+        self.brand_id = brand_id
+        self.brand_name = brand_name
+        self.created_at = created_at
+
+    def save(self):
+        """保存品牌到数据库"""
+        if self.brand_id is None:  # 如果 brand_id 为 None，说明是新增品牌
+            return add_brand(self.brand_name)
+        return None  # 如果已经有 brand_id，说明是更新操作（当前无需实现）
+
+    def delete(self):
+        """删除品牌及其相关数据"""
+        if self.brand_id is not None:
+            delete_brand(self.brand_id)
+
 def get_connection():
     """获取数据库连接"""
     return sqlite3.connect(DB_PATH)
@@ -24,10 +41,10 @@ def add_brand(brand_name):
         conn.close()
 
 def get_all_brands():
-    """获取所有品牌"""
+    """获取所有品牌，包括创建时间"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT brand_id, brand_name FROM brands")
+    cursor.execute("SELECT brand_id, brand_name, created_at FROM brands")
     brands = cursor.fetchall()
     conn.close()
     return brands
@@ -36,6 +53,9 @@ def delete_brand(brand_id):
     """删除品牌及其相关数据"""
     conn = get_connection()
     cursor = conn.cursor()
+    # 先删除相关的进货记录
+    cursor.execute("DELETE FROM purchases WHERE brand_id = ?", (brand_id,))
+    # 再删除品牌
     cursor.execute("DELETE FROM brands WHERE brand_id = ?", (brand_id,))
     conn.commit()
     conn.close()
@@ -74,6 +94,18 @@ def add_purchase(item_id, brand_id, quantity, unit, unit_price, total_amount, da
     """添加进货记录"""
     conn = get_connection()
     cursor = conn.cursor()
+    # 检查 item_id 是否已经被其他品牌使用
+    cursor.execute(
+        """
+        SELECT brand_id FROM purchases WHERE item_id = ?
+        """,
+        (item_id,)
+    )
+    existing_brand = cursor.fetchone()
+    if existing_brand and existing_brand[0] != brand_id:
+        conn.close()
+        raise ValueError(f"商品 (item_id: {item_id}) 已被品牌 (brand_id: {existing_brand[0]}) 使用，不能重复关联！")
+    
     cursor.execute(
         """
         INSERT INTO purchases (item_id, brand_id, quantity, unit, unit_price, total_amount, date, remarks)

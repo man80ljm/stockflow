@@ -1,4 +1,4 @@
-from database.queries import add_purchase
+from models.brand import add_purchase
 
 class Purchase:
     def __init__(self, purchase_id, item_id, brand_id, quantity, unit, unit_price, total_amount, date, remarks, item_name, spec):

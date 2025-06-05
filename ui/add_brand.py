@@ -1,7 +1,6 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QWidget, QGridLayout, QDialog, QLineEdit, QFormLayout, QMessageBox, QMenu
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QWidget, QGridLayout, QDialog, QLineEdit, QFormLayout, QMessageBox, QMenu
 from PyQt5.QtCore import Qt
-from database.queries import add_brand, get_all_brands
-from models.brand import Brand
+from models.brand import add_brand, get_all_brands, Brand
 from ui.purchase_details import PurchaseDetailsWindow
 
 class AddBrandWindow(QWidget):
@@ -12,6 +11,17 @@ class AddBrandWindow(QWidget):
         self.brands = []
         self.init_ui()
         self.load_brands()
+        # 将窗口移动到屏幕中央
+        self.center_on_screen()
+    
+    def center_on_screen(self):
+        """将窗口移动到屏幕中央"""
+        # 获取屏幕几何信息
+        screen = QApplication.primaryScreen().geometry()
+        window_size = self.geometry()
+        x = (screen.width() - window_size.width()) // 2
+        y = (screen.height() - window_size.height()) // 2
+        self.move(x, y)
 
     def init_ui(self):
         # 主布局：垂直布局
@@ -35,11 +45,14 @@ class AddBrandWindow(QWidget):
         button_layout = QHBoxLayout()
         add_button = QPushButton("增加")
         add_button.clicked.connect(self.add_brand_dialog)
-        filter_button = QPushButton("筛选")
-        filter_button.clicked.connect(self.open_filter_screen)
-        export_button = QPushButton("导出")
-        calculate_button = QPushButton("计算")
-        bill_button = QPushButton("账单")
+        filter_button = QPushButton("筛选（未实现）")
+        filter_button.setEnabled(False)  # 禁用未实现功能
+        export_button = QPushButton("导出（未实现）")
+        export_button.setEnabled(False)
+        calculate_button = QPushButton("计算（未实现）")
+        calculate_button.setEnabled(False)
+        bill_button = QPushButton("账单（未实现）")
+        bill_button.setEnabled(False)
         button_layout.addWidget(add_button)
         button_layout.addWidget(filter_button)
         button_layout.addWidget(export_button)
@@ -59,8 +72,7 @@ class AddBrandWindow(QWidget):
 
         self.brands = []
         brand_data = get_all_brands()
-        for brand_id, brand_name in brand_data:
-            created_at = self.get_created_at(brand_id)
+        for brand_id, brand_name, created_at in brand_data:
             brand = Brand(brand_id, brand_name, created_at)
             self.brands.append(brand)
 
@@ -73,18 +85,8 @@ class AddBrandWindow(QWidget):
             button.setStyleSheet("font-size: 12pt;")
             button.clicked.connect(lambda checked, b=brand: self.open_purchase_details(b))
             button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-            button.customContextMenuRequested.connect(lambda pos, b=brand: self.show_context_menu(pos, b))
+            button.customContextMenuRequested.connect(lambda pos, btn=button, b=brand: self.show_context_menu(btn, pos, b))
             self.button_layout.addWidget(button, row, col)
-
-    def get_created_at(self, brand_id):
-        """获取品牌的创建时间"""
-        from database.queries import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT created_at FROM brands WHERE brand_id = ?", (brand_id,))
-        created_at = cursor.fetchone()[0]
-        conn.close()
-        return created_at
 
     def add_brand_dialog(self):
         """显示添加品牌的弹窗"""
@@ -97,11 +99,11 @@ class AddBrandWindow(QWidget):
         self.purchase_window = PurchaseDetailsWindow(brand)
         self.purchase_window.show()
 
-    def show_context_menu(self, pos, brand):
+    def show_context_menu(self, button, pos, brand):
         """显示右键菜单"""
         menu = QMenu(self)
         delete_action = menu.addAction("删除")
-        action = menu.exec_(self.mapToGlobal(pos))
+        action = menu.exec_(button.mapToGlobal(pos))
         if action == delete_action:
             self.confirm_delete(brand)
 
@@ -125,6 +127,16 @@ class AddBrandDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("添加品牌")
         self.init_ui()
+        # 将窗口移动到屏幕中央
+        self.center_on_screen()
+    
+    def center_on_screen(self):
+        """将窗口移动到屏幕中央"""
+        screen = QApplication.primaryScreen().geometry()
+        window_size = self.geometry()
+        x = (screen.width() - window_size.width()) // 2
+        y = (screen.height() - window_size.height()) // 2
+        self.move(x, y)
 
     def init_ui(self):
         layout = QFormLayout()
@@ -152,9 +164,12 @@ class AddBrandDialog(QDialog):
             return
 
         brand = Brand(None, brand_name, None)
-        brand_id = brand.save()
-        if brand_id:
-            QMessageBox.information(self, "成功", f"品牌 '{brand_name}' 添加成功！")
-            self.accept()
-        else:
-            QMessageBox.warning(self, "错误", f"品牌 '{brand_name}' 已存在！")
+        try:
+            brand_id = brand.save()
+            if brand_id:
+                QMessageBox.information(self, "成功", f"品牌 '{brand_name}' 添加成功！")
+                self.accept()
+            else:
+                QMessageBox.warning(self, "错误", f"品牌 '{brand_name}' 已存在！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存品牌时发生错误：{str(e)}")
