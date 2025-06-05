@@ -1,0 +1,25 @@
+# Python 忽略
+*.pyc
+*.pyo
+*.pyd
+.Python
+__pycache__/
+env/
+venv/
+*.env
+
+# 数据库文件
+data/stockflow.db
+
+# 导出文件
+*.xlsx
+*.csv
+
+# IDE 忽略
+.idea/
+.vscode/
+
+# 临时文件
+*.log
+*.tmp
+*.bak
