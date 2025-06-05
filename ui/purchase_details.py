@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QDialog, QFormLayout, QLineEdit, QComboBox, QDateEdit, QApplication, QStackedWidget, QDoubleSpinBox, QHeaderView
-from PyQt5.QtCore import QDate, Qt
+from PyQt5.QtCore import QDate, Qt, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from database.queries import get_purchases_by_brand, get_connection
 from database.db_setup import DB_PATH
@@ -145,6 +145,7 @@ class PurchaseDetailsWindow(QWidget):
     def add_purchase(self):
         """新增进货记录"""
         try:
+            log_debug(f"开始添加进货记录, brand_id: {self.brand.brand_id}")
             dialog = AddPurchaseDialog(self.brand.brand_id, self)
             if dialog.exec_():
                 self.load_purchases()
@@ -160,14 +161,18 @@ class PurchaseDetailsWindow(QWidget):
                 new_remarks = self.table.item(row, column).text().strip() or None
                 if new_remarks != purchase.remarks:
                     # 更新数据库
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "UPDATE purchases SET remarks = ? WHERE purchase_id = ?",
-                        (new_remarks, purchase.purchase_id)
-                    )
-                    conn.commit()
-                    conn.close()
+                    conn = None
+                    try:
+                        conn = get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE purchases SET remarks = ? WHERE purchase_id = ?",
+                            (new_remarks, purchase.purchase_id)
+                        )
+                        conn.commit()
+                    finally:
+                        if conn:
+                            conn.close()
                     # 更新对象
                     purchase.remarks = new_remarks
                     QMessageBox.information(self, "成功", "备注已更新！")
@@ -183,12 +188,15 @@ class AddPurchaseDialog(QDialog):
         self.current_step = 0
         self.item_id = None
         self.selected_item = None
+        self.last_search_time = 0  # 用于防抖
+        self.search_delay = 200  # 防抖延迟（毫秒）
         self.setWindowTitle("新增进货记录")
         log_debug(f"初始化 AddPurchaseDialog, brand_id: {brand_id}, items: {self.items}")
         self.init_ui()
 
     def get_items_for_brand(self):
         """获取当前品牌相关的品类"""
+        conn = None
         try:
             # 检查数据库文件是否存在
             if not os.path.exists(DB_PATH):
@@ -197,22 +205,28 @@ class AddPurchaseDialog(QDialog):
             
             conn = get_connection()
             cursor = conn.cursor()
+            # 确保一个 item_id 只与当前 brand_id 关联
             cursor.execute(
                 """
                 SELECT DISTINCT i.item_id, i.item_name, i.spec
                 FROM items i
                 JOIN purchases p ON i.item_id = p.item_id
                 WHERE p.brand_id = ?
+                AND i.item_id NOT IN (
+                    SELECT item_id FROM purchases WHERE brand_id != ?
+                )
                 """,
-                (self.brand_id,)
+                (self.brand_id, self.brand_id)
             )
             items = cursor.fetchall()
-            conn.close()
             log_debug(f"获取品牌 {self.brand_id} 的相关品类: {items}")
             return items
         except Exception as e:
             log_debug(f"获取品牌相关品类时发生错误: {e}\n{traceback.format_exc()}")
             return []
+        finally:
+            if conn:
+                conn.close()
 
     def init_ui(self):
         try:
@@ -359,21 +373,31 @@ class AddPurchaseDialog(QDialog):
     def on_new_or_existing_changed(self, index):
         """处理新增品类或已有品类的选择"""
         try:
+            log_debug(f"用户选择: 新增/已有选项 = {index}")
+            # 断开信号槽，避免切换页面时触发
+            self.existing_item_combo.editTextChanged.disconnect(self.on_search_text_changed)
+            self.existing_item_combo.currentIndexChanged.disconnect(self.on_item_selected)
+
             if index == 1:  # 选择了“已有品类”
                 self.current_step = 1  # 跳转到步骤 1.5
                 self.existing_item_combo.clearEditText()  # 清空输入框
-                self.existing_item_combo.setFocus()  # 聚焦到输入框
                 # 如果没有可用品类，禁用“下一步”并提示
                 if not self.items:
                     QMessageBox.information(self, "提示", "当前品牌没有可用品类，请先添加品类！")
                     self.next_button.setEnabled(False)
                 else:
                     self.next_button.setEnabled(False)  # 等待用户选择品类
+                    # 延迟设置焦点，避免立即触发信号
+                    QTimer.singleShot(100, self.existing_item_combo.setFocus)
             else:
                 self.current_step = 2  # 直接跳转到输入新商品名称
                 self.next_button.setEnabled(True)
             self.stack.setCurrentIndex(self.current_step)
             self.prev_button.setEnabled(self.current_step > 0)
+
+            # 重新连接信号槽
+            self.existing_item_combo.editTextChanged.connect(self.on_search_text_changed)
+            self.existing_item_combo.currentIndexChanged.connect(self.on_item_selected)
         except Exception as e:
             log_debug(f"处理品类选择变化时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"切换品类选择失败: {str(e)}")
@@ -381,13 +405,29 @@ class AddPurchaseDialog(QDialog):
     def on_search_text_changed(self, text):
         """模糊搜索已有品类"""
         try:
+            # 防抖：限制触发频率
+            current_time = datetime.datetime.now().timestamp() * 1000  # 毫秒
+            if current_time - self.last_search_time < self.search_delay:
+                return
+            self.last_search_time = current_time
+
             if not self.items:  # 如果品类列表为空，直接返回
                 self.next_button.setEnabled(False)
                 return
+            
             text = text.lower().strip()
+            # 保存当前选择的项目ID（如果有）
+            current_id = None
+            if self.existing_item_combo.currentIndex() >= 0:
+                current_item = self.existing_item_model.item(self.existing_item_combo.currentIndex())
+                if current_item:
+                    current_id = current_item.data(Qt.UserRole)
+            
             self.existing_item_model.clear()
             matched_items = False
-            for item in self.items:
+            selected_index = -1
+            
+            for idx, item in enumerate(self.items):
                 display_text = f"{item[1]} ({item[2]})"
                 if not text or text in display_text.lower():
                     model_item = QStandardItem(display_text)
@@ -396,7 +436,18 @@ class AddPurchaseDialog(QDialog):
                     model_item.setData(item[2], Qt.UserRole + 2)  # 存储 spec
                     self.existing_item_model.appendRow(model_item)
                     matched_items = True
-            self.next_button.setEnabled(matched_items and self.existing_item_combo.currentIndex() != -1)
+                    
+                    # 如果是之前选中的项目，记录新索引
+                    if current_id and item[0] == current_id:
+                        selected_index = self.existing_item_model.rowCount() - 1
+            
+            # 如果找到之前选中的项目，重新选中它
+            if selected_index >= 0:
+                self.existing_item_combo.setCurrentIndex(selected_index)
+                self.next_button.setEnabled(True)
+            else:
+                self.next_button.setEnabled(False)
+                
             log_debug(f"搜索文本变化: {text}, 匹配项: {matched_items}")
         except Exception as e:
             log_debug(f"搜索品类时发生错误: {e}\n{traceback.format_exc()}")
@@ -405,8 +456,19 @@ class AddPurchaseDialog(QDialog):
     def on_item_selected(self, index):
         """当用户选择一个品类时，启用‘下一步’按钮"""
         try:
-            if index != -1:
-                self.next_button.setEnabled(True)
+            if index >= 0 and self.existing_item_combo.currentText():
+                item = self.existing_item_model.item(index)
+                if item:  # 确保选中的项存在
+                    self.next_button.setEnabled(True)
+                    # 立即存储选中的品类信息，避免后续步骤重新查询
+                    self.selected_item = {
+                        "item_id": item.data(Qt.UserRole),
+                        "item_name": item.data(Qt.UserRole + 1),
+                        "spec": item.data(Qt.UserRole + 2)
+                    }
+                    log_debug(f"已选择品类: {self.selected_item}")
+                else:
+                    self.next_button.setEnabled(False)
             else:
                 self.next_button.setEnabled(False)
             log_debug(f"品类选择索引: {index}")
@@ -427,28 +489,20 @@ class AddPurchaseDialog(QDialog):
                 if not self.items:
                     QMessageBox.warning(self, "错误", "当前品牌没有可用品类！")
                     return
-                current_index = self.existing_item_combo.currentIndex()
-                log_debug(f"已有品类选择索引: {current_index}")
-                if current_index == -1:
-                    QMessageBox.warning(self, "错误", "请选择一个已有品类！")
-                    return
-                item = self.existing_item_model.item(current_index)
-                if not item:
-                    log_debug("选择的品类项为空")
+                
+                # 使用已存储的选择信息，而不是重新查询
+                if not hasattr(self, 'selected_item') or not self.selected_item:
                     QMessageBox.warning(self, "错误", "请选择一个有效的品类！")
                     return
-                self.item_id = item.data(Qt.UserRole)
+                
+                self.item_id = self.selected_item["item_id"]
                 if self.item_id is None:
                     log_debug("品类 item_id 为空")
                     QMessageBox.warning(self, "错误", "品类数据无效！")
                     return
-                self.selected_item = {
-                    "item_id": self.item_id,
-                    "item_name": item.data(Qt.UserRole + 1),
-                    "spec": item.data(Qt.UserRole + 2)
-                }
-                log_debug(f"选择的品类: {self.selected_item}")
+                
                 # 自动选择最近一次使用的单位（如果没有历史记录，默认为“件”）
+                conn = None
                 try:
                     if not os.path.exists(DB_PATH):
                         log_debug(f"数据库文件不存在: {DB_PATH}")
@@ -460,7 +514,6 @@ class AddPurchaseDialog(QDialog):
                         (self.item_id,)
                     )
                     result = cursor.fetchone()
-                    conn.close()
                     unit = result[0] if result else "件"
                     self.unit_combo.setCurrentText(unit)
                     log_debug(f"查询到的单位: {unit}")
@@ -468,6 +521,9 @@ class AddPurchaseDialog(QDialog):
                     log_debug(f"查询单位时发生错误: {e}\n{traceback.format_exc()}")
                     unit = "件"
                     self.unit_combo.setCurrentText(unit)
+                finally:
+                    if conn:
+                        conn.close()
                 self.current_step = 4  # 跳到输入数量
             elif self.current_step == 2:
                 if not self.new_item_name.text().strip():
@@ -531,29 +587,32 @@ class AddPurchaseDialog(QDialog):
                 if not os.path.exists(DB_PATH):
                     log_debug(f"数据库文件不存在: {DB_PATH}")
                     raise FileNotFoundError(f"数据库文件不存在: {DB_PATH}")
-                conn = get_connection()
-                cursor = conn.cursor()
-                item_name = self.new_item_name.text().strip()
-                spec = self.new_item_spec.text().strip()
+                conn = None
                 try:
-                    cursor.execute(
-                        "INSERT INTO items (item_name, spec) VALUES (?, ?)",
-                        (item_name, spec)
-                    )
-                    conn.commit()
-                    self.item_id = cursor.lastrowid
-                except Exception as e:
-                    cursor.execute(
-                        "SELECT item_id FROM items WHERE item_name = ? AND spec = ?",
-                        (item_name, spec)
-                    )
-                    result = cursor.fetchone()
-                    if result:
-                        self.item_id = result[0]
-                    else:
-                        raise Exception("无法创建或找到商品")
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    item_name = self.new_item_name.text().strip()
+                    spec = self.new_item_spec.text().strip()
+                    try:
+                        cursor.execute(
+                            "INSERT INTO items (item_name, spec) VALUES (?, ?)",
+                            (item_name, spec)
+                        )
+                        conn.commit()
+                        self.item_id = cursor.lastrowid
+                    except Exception as e:
+                        cursor.execute(
+                            "SELECT item_id FROM items WHERE item_name = ? AND spec = ?",
+                            (item_name, spec)
+                        )
+                        result = cursor.fetchone()
+                        if result:
+                            self.item_id = result[0]
+                        else:
+                            raise Exception("无法创建或找到商品")
                 finally:
-                    conn.close()
+                    if conn:
+                        conn.close()
             else:
                 self.item_id = self.selected_item["item_id"]
 
