@@ -1,0 +1,24 @@
+stockflow/
+├── main.py              # 项目入口文件，启动整个应用
+├── ui/                  # 存放界面相关代码
+│   ├── add_brand.py     # 第一个界面：添加品牌
+│   ├── purchase_details.py  # 第二个界面：品牌进货信息详情
+│   ├── filter_screen.py     # 第三个界面：筛选页面
+│   ├── filter_results.py    # 第四个界面：筛选结果页面
+│   ├── activity_info.py     # 第五个界面：单月活动信息
+│   └── __init__.py      # 标记 ui 目录为 Python 包
+├── database/            # 存放数据库操作相关代码
+│   ├── db_setup.py      # 数据库初始化和表结构创建
+│   ├── queries.py       # 数据库查询和操作逻辑
+│   └── __init__.py      # 标记 database 目录为 Python 包
+├── models/              # 存放数据模型（数据对象定义）
+│   ├── brand.py         # 品牌数据模型
+│   ├── purchase.py      # 进货记录数据模型
+│   ├── activity.py      # 活动数据模型
+│   └── __init__.py      # 标记 models 目录为 Python 包
+├── utils/               # 存放工具函数（如导出功能）
+│   ├── export.py        # 数据导出功能（Excel/CSV）
+│   └── __init__.py      # 标记 utils 目录为 Python 包
+├── data/                # 存放数据库文件
+│   └── stockflow.db     # SQLite 数据库文件
+└── __init__.py          # 标记 stockflow 目录为 Python 包
