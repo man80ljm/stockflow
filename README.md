@@ -1,5 +1,5 @@
 StockFlow
-StockFlow 是一款用于进货统计与活动完成度的桌面应用软件，旨在帮助用户管理品牌进货信息、设置活动目标、跟踪进货进度，并导出账单统计数据。软件使用 Python 开发，基于 PyQt6 框架和 SQLite 数据库。
+StockFlow 是一款用于进货统计与活动完成度的桌面应用软件，旨在帮助用户管理品牌进货信息、设置活动目标、跟踪进货进度，并导出账单统计数据。软件使用 Python 开发，基于 PyQt5 框架和 SQLite 数据库。
 功能
 
 进货管理：记录不同品牌的进货信息（品名、规格、数量、单价、总金额、日期）。
@@ -28,9 +28,9 @@ venv\Scripts\activate     # Windows
 
 
 安装依赖：
-pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 
-安装完成后，检查是否成功安装了 requirements.txt 中的依赖（PyQt6、pandas 和 openpyxl）。
+安装完成后，检查是否成功安装了 requirements.txt 中的依赖（PyQt5、pandas 和 openpyxl）。
 pip list
 
 
