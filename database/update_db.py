@@ -7,61 +7,47 @@ def update_database_schema():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 检查活动表是否存在
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='activities'")
-    table_exists = cursor.fetchone()
+    # 检查并更新 items 表
+    cursor.execute("PRAGMA table_info(items)")
+    existing_columns = [row[1] for row in cursor.fetchall()]
     
-    if table_exists:
+    if 'unit' not in existing_columns or 'brand_id' not in existing_columns:
         # 备份现有数据
-        cursor.execute("SELECT * FROM activities")
-        activities_data = cursor.fetchall()
+        cursor.execute("SELECT item_id, item_name, spec FROM items")
+        items_data = cursor.fetchall()
         
         # 删除现有表
-        cursor.execute("DROP TABLE activities")
+        cursor.execute("DROP TABLE IF EXISTS items")
         
         # 创建新表结构
         cursor.execute("""
-            CREATE TABLE activities (
-                activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            CREATE TABLE items (
+                item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_name TEXT NOT NULL,
+                spec TEXT NOT NULL,
+                unit TEXT NOT NULL,
                 brand_id INTEGER NOT NULL,
-                month TEXT NOT NULL,
-                is_total_target BOOLEAN NOT NULL,
-                item_id INTEGER,
-                activity_type TEXT,
-                need_total_target BOOLEAN,
-                need_item_target BOOLEAN,
-                target_value REAL NOT NULL,
-                original_price REAL,
-                discount_price REAL,
-                FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE,
-                FOREIGN KEY (item_id) REFERENCES items(item_id)
+                UNIQUE(item_name, spec, unit, brand_id),
+                FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
             )
         """)
         
-        # 如果有需要，尝试迁移数据
-        # 此处需要根据旧表结构和新表结构调整
-        
-        print("活动表结构已更新")
-    else:
-        # 如果表不存在，直接创建
-        cursor.execute("""
-            CREATE TABLE activities (
-                activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                brand_id INTEGER NOT NULL,
-                month TEXT NOT NULL,
-                is_total_target BOOLEAN NOT NULL,
-                item_id INTEGER,
-                activity_type TEXT,
-                need_total_target BOOLEAN,
-                need_item_target BOOLEAN,
-                target_value REAL NOT NULL,
-                original_price REAL,
-                discount_price REAL,
-                FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE,
-                FOREIGN KEY (item_id) REFERENCES items(item_id)
+        # 迁移数据（假设现有数据无 unit 和 brand_id，需手动补充）
+        for item in items_data:
+            cursor.execute(
+                "INSERT INTO items (item_id, item_name, spec, unit, brand_id) VALUES (?, ?, ?, ?, ?)",
+                (item[0], item[1], item[2], "件", 1)  # 默认单位为"件"，brand_id需根据上下文设置
             )
-        """)
-        print("活动表已创建")
+        
+        print("items 表结构已更新")
+    
+    # 检查并更新 activities 表（确保与 queries.py 一致）
+    cursor.execute("PRAGMA table_info(activities)")
+    existing_columns = [row[1] for row in cursor.fetchall()]
+    if 'need_total_target' not in existing_columns or 'need_item_target' not in existing_columns:
+        cursor.execute("ALTER TABLE activities ADD COLUMN need_total_target BOOLEAN")
+        cursor.execute("ALTER TABLE activities ADD COLUMN need_item_target BOOLEAN")
+        print("activities 表已添加 need_total_target 和 need_item_target 列")
     
     conn.commit()
     conn.close()

@@ -1,23 +1,46 @@
 import sys
+import traceback
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
                             QHeaderView, QDialog, QFormLayout, QComboBox, QCheckBox, 
-                            QMessageBox,QStackedWidget,QRadioButton)
-from PyQt5.QtGui import QDoubleValidator
-from PyQt5.QtCore import Qt
+                            QMessageBox, QStackedWidget, QRadioButton, QCompleter,QAbstractItemView)
+from PyQt5.QtGui import QDoubleValidator, QStandardItemModel, QStandardItem,QIntValidator
+from PyQt5.QtCore import Qt, QSortFilterProxyModel
 from database.queries import (get_monthly_activities, add_activity, delete_activity, 
                              get_all_items, add_item)
+import os
+import datetime
+from database.queries import (
+    get_monthly_activities, add_activity, delete_activity, 
+    get_all_items, add_item, get_connection
+)
+
+# 建议也为这个文件添加日志功能，方便调试
+def log_activity_debug(message):
+    try:
+        with open("activity_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] {message}\n")
+    except:
+        pass # 日志失败不应影响主程序
+
+# 定义 log_debug 函数，复用 purchase_details.py 的逻辑
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.log")
+def log_debug(message):
+    """记录调试信息到文件"""
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        f.write(f"[{timestamp}] {message}\n")
 
 class ActivityInfoWindow(QMainWindow):
     """活动信息管理窗口"""
     
-    def __init__(self, brand, year, month):
-        super().__init__()
+    def __init__(self, brand, year, month,parent=None):
+        super().__init__(parent)
         self.brand = brand
         self.year = year
         self.month = month
         self.setWindowTitle(f"{brand.brand_name} - {year}年{month}月活动")
-        self.setGeometry(100, 100, 900, 600)
+        self.setGeometry(100, 100, 1600, 600)
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -45,7 +68,7 @@ class ActivityInfoWindow(QMainWindow):
             "商品名称", "规格", "活动类型", "需总销量", "需单品销量", 
             "目标值", "原价", "优惠价", "操作"
         ])
-        self.activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         add_btn = QPushButton("添加单品活动")
         add_btn.clicked.connect(self.open_add_dialog)
         item_layout.addWidget(self.activity_table)
@@ -55,30 +78,90 @@ class ActivityInfoWindow(QMainWindow):
         self.load_activities()
 
     def load_activities(self):
-        """加载活动数据"""
+        self.activity_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        """加载活动数据，防止重复和空行"""
         activities = get_monthly_activities(self.brand.brand_id, self.year, self.month)
         self.activity_table.setRowCount(0)
+        seen_items = set()  # 跟踪已添加的 item_id
         for activity in activities:
             row = self.activity_table.rowCount()
-            self.activity_table.insertRow(row)
             activity_id, is_total, item_id, activity_type, need_total, need_item, target_value, \
-            original_price, discount_price, item_name, spec = activity
+            original_price, discount_price, item_name, spec, unit = activity
             
             if is_total:
                 self.total_target_input.setText(str(target_value))
                 continue
                 
-            self.activity_table.setItem(row, 0, QTableWidgetItem(item_name or ""))
-            self.activity_table.setItem(row, 1, QTableWidgetItem(spec or ""))
-            self.activity_table.setItem(row, 2, QTableWidgetItem(activity_type or ""))
-            self.activity_table.setItem(row, 3, QTableWidgetItem("是" if need_total else "否"))
-            self.activity_table.setItem(row, 4, QTableWidgetItem("是" if need_item else "否"))
-            self.activity_table.setItem(row, 5, QTableWidgetItem(str(target_value)))
-            self.activity_table.setItem(row, 6, QTableWidgetItem(str(original_price or "")))
-            self.activity_table.setItem(row, 7, QTableWidgetItem(str(discount_price or "")))
+            # 防止重复添加
+            if item_id and item_id in seen_items:
+                continue
+            seen_items.add(item_id)
+            
+            self.activity_table.insertRow(row)
+
+
+            # 第0列: 商品名称
+            item0 = QTableWidgetItem(item_name or "")
+            item0.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 0, item0)
+
+            # 第1列: 规格
+            item1 = QTableWidgetItem(spec or "")
+            item1.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 1, item1)
+
+            # 第2列: 活动类型
+            item2 = QTableWidgetItem(activity_type or "")
+            item2.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 2, item2)
+
+            # 第3列: 需总销量
+            item3 = QTableWidgetItem("是" if need_total else "否")
+            item3.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 3, item3)
+
+            # 第4列: 需单品销量
+            item4 = QTableWidgetItem("是" if need_item else "否")
+            item4.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 4, item4)
+
+            # 第5列: 目标值
+            item5 = QTableWidgetItem(str(target_value))
+            item5.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 5, item5)
+
+            # 第6列: 原价
+            item6 = QTableWidgetItem(str(original_price or ""))
+            item6.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 6, item6)
+
+            # 第7列: 优惠价
+            item7 = QTableWidgetItem(str(discount_price or ""))
+            item7.setTextAlignment(Qt.AlignCenter)
+            self.activity_table.setItem(row, 7, item7)
+            
+            # 第8列: 操作按钮 (按钮默认在单元格内居中，无需修改)
             delete_btn = QPushButton("删除")
             delete_btn.clicked.connect(lambda checked, aid=activity_id: self.delete_activity(aid))
             self.activity_table.setCellWidget(row, 8, delete_btn)
+
+        # --- 以下是之前做的列宽自适应修改 ---
+
+        # 首先，让列宽自动适应内容
+        self.activity_table.resizeColumnsToContents()
+
+        # 然后，为每一列增加额外的边距以提高可读性
+        font_metrics = self.activity_table.fontMetrics()
+        # 计算4个大写字母'M'的像素宽度作为边距
+        padding = font_metrics.horizontalAdvance('M') * 4 
+        
+        # 循环遍历所有列
+        for col in range(self.activity_table.columnCount()):
+            # 获取当前列的宽度
+            current_width = self.activity_table.columnWidth(col)
+            # 设置新的宽度（原宽度 + 边距）
+            self.activity_table.setColumnWidth(col, current_width + padding)
+
 
     def save_total_target(self):
         """保存总销量目标"""
@@ -114,8 +197,9 @@ class AddItemActivityDialog(QDialog):
         self.brand_id = brand_id
         self.year = year
         self.month = month
+        self.selected_item = None
         self.setWindowTitle("添加单品活动")
-        self.setGeometry(200, 200, 400, 300)
+        self.setGeometry(200, 200, 450, 350)
         self.init_ui()
 
     def init_ui(self):
@@ -138,19 +222,61 @@ class AddItemActivityDialog(QDialog):
         step2 = QWidget()
         step2_layout = QFormLayout(step2)
         self.new_item_name = QLineEdit(placeholderText="请输入品类名称")
-        self.new_item_spec = QLineEdit(placeholderText="请输入规格")
-        self.existing_combo = QComboBox()
-        items = get_all_items()
-        for item in items:
-            self.existing_combo.addItem(f"{item[1]} ({item[2]})", item[0])
+        self.new_item_spec = QLineEdit()
+        self.new_item_spec.setPlaceholderText("请输入规格 (纯数字, 如: 12)") # 优化提示文本
+        # 创建一个整数验证器，允许输入的范围是 1 到 99999
+        validator = QIntValidator(1, 99999, self)
+        self.new_item_spec.setValidator(validator)
+        self.unit_combo = QComboBox()
+        self.unit_combo.addItems(["件", "箱", "桶", "瓶", "盒", "杯", "组", "排"])
+        self.existing_item_combo = QComboBox()
+        self.existing_item_combo.setEditable(True)
+        self.existing_item_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.existing_item_combo.lineEdit().setPlaceholderText("输入关键字进行搜索...")
+
+        self.existing_item_model = QStandardItemModel()
+        items = get_all_items(self.brand_id)
+        for item_id, item_name, spec, unit in items:
+            display_text = f"{item_name} ({spec}, {unit})"
+            model_item = QStandardItem(display_text)
+            model_item.setData(item_id, Qt.UserRole)
+            model_item.setData(item_name, Qt.UserRole + 1)
+            model_item.setData(spec, Qt.UserRole + 2)
+            model_item.setData(unit, Qt.UserRole + 3)
+            self.existing_item_model.appendRow(model_item)
+
+        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model.setSourceModel(self.existing_item_model)
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.proxy_model.setFilterKeyColumn(0)
+
+        self.existing_item_combo.setModel(self.proxy_model)
+
+        self.existing_item_combo.setCurrentIndex(-1)
+        
+        completer = self.existing_item_combo.completer()
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        
+        self.existing_item_combo.lineEdit().textChanged.connect(self.on_search_text_changed)
+        self.existing_item_combo.activated.connect(self.on_item_selected)
+
+        self.existing_item_combo.setMaxVisibleItems(10)
+        self.existing_item_combo.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.existing_item_combo.setStyleSheet("""
+            QComboBox QAbstractItemView {
+                selection-background-color: #0078D7;
+                selection-color: white;
+            }
+        """)
         step2_layout.addRow("品类名称:", self.new_item_name)
         step2_layout.addRow("规格:", self.new_item_spec)
-        step2_layout.addRow("选择已有品类:", self.existing_combo)
-        self.existing_combo.hide()
+        step2_layout.addRow("单位:", self.unit_combo)
+        step2_layout.addRow("选择已有品类:", self.existing_item_combo)
         self.stack.addWidget(step2)
 
         # 步骤3: 选择活动类型和配置
         step3 = QWidget()
+        # ... (步骤3的代码保持不变) ...
         step3_layout = QFormLayout(step3)
         self.activity_type = QComboBox()
         self.activity_type.addItems(["案后结", "案后结(不与总指标挂钩)", "特价", "随货搭"])
@@ -175,90 +301,217 @@ class AddItemActivityDialog(QDialog):
 
         layout.addWidget(self.stack)
         nav_layout = QHBoxLayout()
-        self.prev_btn = QPushButton("上一步")
-        self.next_btn = QPushButton("下一步")
-        self.finish_btn = QPushButton("完成")
-        nav_layout.addWidget(self.prev_btn)
-        nav_layout.addWidget(self.next_btn)
-        nav_layout.addWidget(self.finish_btn)
+        
+        self.prev_button = QPushButton("上一步")
+        self.next_button = QPushButton("下一步")
+        self.finish_button = QPushButton("完成")
+        nav_layout.addWidget(self.prev_button)
+        nav_layout.addWidget(self.next_button)
+        nav_layout.addWidget(self.finish_button)
+
         layout.addLayout(nav_layout)
 
-        self.prev_btn.clicked.connect(self.prev_step)
-        self.next_btn.clicked.connect(self.next_step)
-        self.finish_btn.clicked.connect(self.save_activity)
-        self.prev_btn.setEnabled(False)
-        self.finish_btn.hide()
+        self.prev_button.clicked.connect(self.prev_step)
+        self.next_button.clicked.connect(self.next_step)
+        self.finish_button.clicked.connect(self.save_activity)
 
-        self.new_item_radio.toggled.connect(lambda checked: self.toggle_item_view(checked))
+        # 注意：这里只连接信号，不做任何按钮状态的判断
+        self.new_item_radio.toggled.connect(self.toggle_item_view)
         self.current_step = 0
+        
+        self.toggle_item_view() # 初始化时调用一次，确保界面正确
+        self.update_buttons()   # 初始化时调用一次，确保按钮状态正确
 
-    def toggle_item_view(self, checked):
-        """切换品类输入方式"""
-        if checked:
-            self.new_item_name.show()
-            self.new_item_spec.show()
-            self.existing_combo.hide()
-        else:
-            self.new_item_name.hide()
-            self.new_item_spec.hide()
-            self.existing_combo.show()
+    def toggle_item_view(self):
+        """
+        核心修改点 1: 此函数现在只负责切换界面元素的显示/隐藏
+        不再处理任何按钮的启用/禁用逻辑
+        """
+        is_new = self.new_item_radio.isChecked()
+        self.new_item_name.setVisible(is_new)
+        self.new_item_spec.setVisible(is_new)
+        self.unit_combo.setVisible(is_new)
+        self.existing_item_combo.setVisible(not is_new)
 
     def prev_step(self):
         """返回上一步"""
         if self.current_step > 0:
+            if self.current_step == 1:
+                self.existing_item_combo.lineEdit().clear()
+                self.selected_item = None
+
             self.current_step -= 1
             self.stack.setCurrentIndex(self.current_step)
             self.update_buttons()
 
     def next_step(self):
         """前往下一步"""
+        if self.current_step == 1 and self.new_item_radio.isChecked():
+            if not self.new_item_name.text().strip() or not self.new_item_spec.text().strip():
+                QMessageBox.warning(self, "输入错误", "品类名称和规格不能为空！")
+                return
+
         if self.current_step < 2:
             self.current_step += 1
             self.stack.setCurrentIndex(self.current_step)
-            self.update_buttons()
+            self.toggle_item_view() # 切换页面后，确保控件显示正确
+            self.update_buttons()   # 切换页面后，更新按钮状态
 
     def update_buttons(self):
-        """更新导航按钮状态"""
-        self.prev_btn.setEnabled(self.current_step > 0)
-        self.next_btn.setVisible(self.current_step < 2)
-        self.finish_btn.setVisible(self.current_step == 2)
+        """
+        核心修改点 2: 此函数成为按钮状态管理的唯一中心
+        """
+        self.prev_button.setEnabled(self.current_step > 0)
+        self.next_button.setVisible(self.current_step < 2)
+        self.finish_button.setVisible(self.current_step == 2)
+        
+        # 根据当前在哪一步，来决定“下一步”按钮是否可用
+        if self.current_step == 0:
+            # 在第一步，无论如何“下一步”都可用
+            self.next_button.setEnabled(True)
+        elif self.current_step == 1:
+            # 在第二步，需要分情况讨论
+            if self.new_item_radio.isChecked():
+                # 新增品类模式，下一步可用
+                self.next_button.setEnabled(True)
+            else:
+                # 已有品类模式，必须选择了品类后，下一步才可用
+                self.next_button.setEnabled(self.selected_item is not None)
+
+    def on_search_text_changed(self, text):
+        """处理搜索文本变化，禁止自动填充，并增加错误处理"""
+        try:
+            current_text = self.existing_item_combo.lineEdit().text()
+            cursor_pos = self.existing_item_combo.lineEdit().cursorPosition()
+
+            self.proxy_model.setFilterFixedString(text)
+            
+            self.selected_item = None
+            self.update_buttons()
+
+            # 恢复用户输入的文本和光标，防止QCompleter自动填充
+            if self.existing_item_combo.lineEdit().text() != current_text:
+                self.existing_item_combo.lineEdit().setText(current_text)
+                self.existing_item_combo.lineEdit().setCursorPosition(cursor_pos)
+
+            if text and self.proxy_model.rowCount() > 0:
+                self.existing_item_combo.showPopup()
+            else:
+                self.existing_item_combo.hidePopup()
+        except Exception as e:
+            log_activity_debug(f"搜索时发生严重错误: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "严重错误", f"搜索功能出现异常: {e}")
+
+    def on_item_selected(self, index):
+        """处理用户从下拉列表选择品类后的操作，并增加错误处理"""
+        try:
+            if index < 0:
+                return
+            
+            proxy_index = self.proxy_model.index(index, 0)
+            source_index = self.proxy_model.mapToSource(proxy_index)
+            item = self.existing_item_model.itemFromIndex(source_index)
+
+            if item:
+                self.existing_item_combo.lineEdit().blockSignals(True)
+                self.existing_item_combo.lineEdit().setText(item.text())
+                self.existing_item_combo.lineEdit().blockSignals(False)
+                
+                self.selected_item = {
+                    "item_id": item.data(Qt.UserRole),
+                    "item_name": item.data(Qt.UserRole + 1),
+                    "spec": item.data(Qt.UserRole + 2),
+                    "unit": item.data(Qt.UserRole + 3)
+                }
+                self.update_buttons()
+                self.existing_item_combo.hidePopup()
+        except Exception as e:
+            log_activity_debug(f"选择项目时发生严重错误: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "严重错误", f"选择项目时出现异常: {e}")
+            self.selected_item = None
+            self.update_buttons()
 
     def save_activity(self):
         """保存活动到数据库"""
         if not self.validate_inputs():
             return
-        item_id = self.existing_combo.currentData() if not self.new_item_radio.isChecked() else \
-                  add_item(self.new_item_name.text(), self.new_item_spec.text())
-        activity_type = self.activity_type.currentText()
-        need_total = self.need_total.isChecked()
-        need_item = self.need_item.isChecked()
-        target_value = float(self.target_value.text())
-        original_price = float(self.original_price.text())
-        discount_price = float(self.discount_price.text())
         
-        # 根据活动类型设置默认条件
-        if activity_type == "案后结(不与总指标挂钩)":
-            need_total = False
+        item_id = None
+        item_name = None
         
-        add_activity(self.brand_id, f"{self.year}-{self.month:02d}", False, item_id,
-                     activity_type, need_total, need_item, target_value,
-                     original_price, discount_price)
-        self.accept()
+        # 检查当月活动中是否已存在相同商品
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            if self.new_item_radio.isChecked():
+                item_name = self.new_item_name.text().strip()
+                spec = self.new_item_spec.text().strip()
+                unit = self.unit_combo.currentText()
+                
+                # 检查 items 表中是否已存在相同商品
+                cursor.execute(
+                    "SELECT item_id FROM items WHERE item_name = ? AND spec = ? AND unit = ? AND brand_id = ?",
+                    (item_name, spec, unit, self.brand_id)
+                )
+                existing_item = cursor.fetchone()
+                if existing_item:
+                    QMessageBox.warning(self, "错误", f"商品 '{item_name} ({spec}, {unit})' 已存在，无法重复添加！")
+                    return
+                item_id = add_item(item_name, spec, unit, self.brand_id)
+            else:
+                if self.selected_item:
+                    item_id = self.selected_item['item_id']
+                    item_name = self.selected_item['item_name']
+                else:
+                    QMessageBox.warning(self, "错误", "请选择一个有效的已有品类。")
+                    return
+            
+            # 检查当月活动中是否已存在该商品的活动
+            month_str = f"{self.year}-{self.month:02d}"
+            cursor.execute(
+                "SELECT COUNT(*) FROM activities WHERE brand_id = ? AND month = ? AND item_id = ?",
+                (self.brand_id, month_str, item_id)
+            )
+            if cursor.fetchone()[0] > 0:
+                QMessageBox.warning(self, "错误", f"当月活动中已存在商品 '{item_name}' 的活动，无法重复添加！")
+                return
+            
+            activity_type = self.activity_type.currentText()
+            need_total = self.need_total.isChecked()
+            need_item = self.need_item.isChecked()
+            target_value = float(self.target_value.text()) if self.target_value.text() else 0
+            original_price = float(self.original_price.text()) if self.original_price.text() else 0
+            discount_price = float(self.discount_price.text()) if self.discount_price.text() else 0
+            
+            if activity_type == "案后结(不与总指标挂钩)":
+                need_total = False
+            
+            add_activity(self.brand_id, f"{self.year}-{self.month:02d}", False, item_id,
+                        activity_type, need_total, need_item, target_value,
+                        original_price, discount_price)
+            self.accept()
+        except Exception as e:
+            log_activity_debug(f"保存活动时发生错误: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"保存失败: {str(e)}")
+        finally:
+            conn.close()
 
     def validate_inputs(self):
         """验证输入数据"""
-        if self.current_step == 1 and self.new_item_radio.isChecked():
-            if not self.new_item_name.text() or not self.new_item_spec.text():
-                QMessageBox.warning(self, "错误", "请输入品类名称和规格")
-                return False
-        elif self.current_step == 2:
-            if not self.target_value.text() or not self.original_price.text() or not self.discount_price.text():
-                QMessageBox.warning(self, "错误", "请输入目标值、原价和优惠价")
-                return False
-            if float(self.discount_price.text()) >= float(self.original_price.text()):
-                QMessageBox.warning(self, "错误", "优惠价必须低于原价")
+        if self.current_step == 2:
+            try:
+                if not self.target_value.text() or not self.original_price.text() or not self.discount_price.text():
+                    QMessageBox.warning(self, "错误", "请输入目标值、原价和优惠价")
+                    return False
+                if float(self.discount_price.text()) >= float(self.original_price.text()):
+                    QMessageBox.warning(self, "错误", "优惠价必须低于原价")
+                    return False
+            except ValueError:
+                QMessageBox.warning(self, "错误", "价格和目标值必须是有效的数字")
                 return False
         return True
+
+
 
 if __name__ == "__main__":
     from PyQt5.QtWidgets import QApplication
