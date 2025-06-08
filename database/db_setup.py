@@ -45,18 +45,22 @@ def create_database():
         )
     """)
 
-    # 创建活动表（添加 ON DELETE CASCADE）
+    # 创建活动表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS activities (
             activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
             brand_id INTEGER NOT NULL,
             month TEXT NOT NULL,
-            target_type TEXT NOT NULL,
-            target_item TEXT,
+            is_total_target BOOLEAN NOT NULL,
+            item_id INTEGER,
+            activity_type TEXT,
+            need_total_target BOOLEAN,
+            need_item_target BOOLEAN,
             target_value REAL NOT NULL,
-            rebate_rule TEXT NOT NULL,
-            status TEXT NOT NULL,
-            FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
+            original_price REAL,
+            discount_price REAL,
+            FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES items(item_id)
         )
     """)
 

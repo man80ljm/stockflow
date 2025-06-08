@@ -1,5 +1,8 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QDialog, QFormLayout, QLineEdit, QComboBox, QDateEdit, QApplication, QStackedWidget, QDoubleSpinBox, QHeaderView, QMenu
-from PyQt5.QtCore import QDate, Qt, QTimer
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
+                             QTableWidgetItem, QPushButton, QMessageBox, QDialog,
+                             QFormLayout, QLineEdit, QComboBox, QDateEdit, QApplication,
+                             QStackedWidget, QDoubleSpinBox, QHeaderView, QMenu,QCompleter)
+from PyQt5.QtCore import QDate, Qt, QTimer, QSortFilterProxyModel
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from database.queries import get_purchases_by_brand, get_connection
 from database.db_setup import DB_PATH
@@ -7,7 +10,7 @@ from models.purchase import Purchase
 import datetime
 import traceback
 import os
-import sqlite3  # 导入 sqlite3 以处理 IntegrityError
+import sqlite3
 
 # 调试日志文件路径
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.log")
@@ -29,7 +32,7 @@ class PurchaseDetailsWindow(QWidget):
         self.year = QDate.currentDate().year()
         self.month = QDate.currentDate().month()
         self.setWindowTitle(f"{self.brand.brand_name} - 进货详情")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1400, 600)
         self.init_ui()
         self.load_purchases()
         self.center_on_screen()
@@ -58,12 +61,12 @@ class PurchaseDetailsWindow(QWidget):
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(["日期", "品名", "规格", "单位", "数量", "单价", "金额", "备注"])
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)  # 禁止双击编辑
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        column_widths = {0: 120, 1: 150, 2: 100, 3: 80, 4: 80, 5: 100, 6: 120, 7: 150}
-        for col, width in column_widths.items():
-            self.table.setColumnWidth(col, width)
+        
+        # 列宽自适应并支持手动拖动
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        # --- 新增代码：启用右键菜单 ---
         self.setup_context_menu()
         layout.addWidget(self.table)
 
@@ -99,20 +102,35 @@ class PurchaseDetailsWindow(QWidget):
 
     def setup_date_filter(self):
         date_layout = QHBoxLayout()
-        self.date_selector = QDateEdit()
-        self.date_selector.setDisplayFormat("yyyy年MM月")
-        self.date_selector.setCalendarPopup(True)
-        self.date_selector.setDate(QDate.currentDate())
-        self.date_selector.dateChanged.connect(self.filter_by_date)
         date_layout.addWidget(QLabel("选择月份："))
-        date_layout.addWidget(self.date_selector)
+
+        # 创建年份选择框
+        self.year_combo = QComboBox()
+        current_year = QDate.currentDate().year()
+        for year in range(current_year - 5, current_year + 5):
+            self.year_combo.addItem(str(year))
+        self.year_combo.setCurrentText(str(self.year)) # 设置当前年份
+        self.year_combo.currentIndexChanged.connect(self.filter_by_date)
+
+        # 创建月份选择框
+        self.month_combo = QComboBox()
+        for month in range(1, 13):
+            self.month_combo.addItem(f"{month:02d}") # 格式化为 01, 02 ...
+        self.month_combo.setCurrentIndex(self.month - 1) # 设置当前月份
+        self.month_combo.currentIndexChanged.connect(self.filter_by_date)
+
+        date_layout.addWidget(self.year_combo)
+        date_layout.addWidget(QLabel("年"))
+        date_layout.addWidget(self.month_combo)
+        date_layout.addWidget(QLabel("月"))
         date_layout.addStretch()
         return date_layout
 
+
     def filter_by_date(self):
-        selected_date = self.date_selector.date()
-        self.year = selected_date.year()
-        self.month = selected_date.month()
+        # 从下拉框获取新的年月
+        self.year = int(self.year_combo.currentText())
+        self.month = int(self.month_combo.currentText())
         self.current_page = 1
         self.load_purchases()
 
@@ -152,14 +170,33 @@ class PurchaseDetailsWindow(QWidget):
             self.table.setRowCount(len(self.purchases))
             for row, purchase in enumerate(self.purchases):
                 date_str = datetime.datetime.strptime(purchase.date, "%Y-%m-%d").strftime("%Y年%m月%d日")
-                self.table.setItem(row, 0, QTableWidgetItem(date_str))
-                self.table.setItem(row, 1, QTableWidgetItem(purchase.item_name))
-                self.table.setItem(row, 2, QTableWidgetItem(purchase.spec))
-                self.table.setItem(row, 3, QTableWidgetItem(purchase.unit))
-                self.table.setItem(row, 4, QTableWidgetItem(str(purchase.quantity)))
-                self.table.setItem(row, 5, QTableWidgetItem(str(purchase.unit_price)))
-                self.table.setItem(row, 6, QTableWidgetItem(str(purchase.total_amount)))
-                self.table.setItem(row, 7, QTableWidgetItem(purchase.remarks or ""))
+                
+                # --- 修改部分：创建并设置单元格 ---
+                items_to_set = [
+                    date_str, purchase.item_name, purchase.spec, purchase.unit,
+                    str(purchase.quantity), str(purchase.unit_price),
+                    str(purchase.total_amount), purchase.remarks or ""
+                ]
+
+                for col, text in enumerate(items_to_set):
+                    item = QTableWidgetItem(text)
+                    # 设置内容居中
+                    item.setTextAlignment(Qt.AlignCenter)
+                    self.table.setItem(row, col, item)
+                # --- 修改结束 ---
+            
+            # 自适应列宽
+            self.table.resizeColumnsToContents()
+
+            # --- 新增部分：在自适应基础上增加额外宽度 ---
+            font_metrics = self.table.fontMetrics()
+            # 使用一个常用的大写字母'M'的宽度作为字符宽度的参考
+            padding = font_metrics.horizontalAdvance('M') * 4 
+            for col in range(self.table.columnCount()):
+                current_width = self.table.columnWidth(col)
+                self.table.setColumnWidth(col, current_width + padding)
+            # --- 新增结束 ---
+
         except Exception as e:
             log_debug(f"加载进货记录时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"加载进货记录失败: {str(e)}")
@@ -175,7 +212,9 @@ class PurchaseDetailsWindow(QWidget):
             self.load_purchases()
 
     def open_activity_screen(self):
-        QMessageBox.information(self, "提示", "活动信息界面尚未实现！")
+        from ui.activity_info import ActivityInfoWindow
+        self.activity_window = ActivityInfoWindow(self.brand, self.year, self.month)
+        self.activity_window.show()
 
     def add_purchase(self):
         try:
@@ -208,7 +247,7 @@ class PurchaseDetailsWindow(QWidget):
             self.load_purchases()
 
     def on_cell_double_clicked(self, row, column):
-        if column == 7:  # 仅允许编辑备注
+        if column == 7:
             self.table.setEditTriggers(QTableWidget.DoubleClicked)
             self.table.editItem(self.table.item(row, column))
             self.table.cellChanged.connect(self.on_cell_changed)
@@ -243,8 +282,10 @@ class AddPurchaseDialog(QDialog):
         self.current_step = 0
         self.item_id = None
         self.selected_item = None
-        self.last_search_time = 0
-        self.search_delay = 200
+        
+        # 使用代理模型进行模糊搜索
+        self.proxy_model = QSortFilterProxyModel(self)
+        
         self.setWindowTitle("新增进货记录" if not purchase else "修改进货记录")
         self.init_ui()
         if purchase:
@@ -254,12 +295,18 @@ class AddPurchaseDialog(QDialog):
         self.new_or_existing_combo.setCurrentIndex(1)
         self.current_step = 1
         self.stack.setCurrentIndex(self.current_step)
-        for i in range(self.existing_item_model.rowCount()):
-            item = self.existing_item_model.item(i)
-            if item.data(Qt.UserRole) == self.purchase.item_id:
-                self.existing_item_combo.setCurrentIndex(i)
-                self.on_item_selected(i)
+        
+        # 找到对应的项目并选中
+        for row in range(self.existing_item_model.rowCount()):
+            source_index = self.existing_item_model.index(row, 0)
+            item_id = self.existing_item_model.data(source_index, Qt.UserRole)
+            if item_id == self.purchase.item_id:
+                proxy_index = self.proxy_model.mapFromSource(source_index)
+                if proxy_index.isValid():
+                    self.existing_item_combo.setCurrentIndex(proxy_index.row())
+                    self.on_item_selected(proxy_index.row())
                 break
+
         self.quantity_input.setValue(self.purchase.quantity)
         self.unit_price_input.setValue(self.purchase.unit_price)
         date = QDate.fromString(self.purchase.date, "yyyy-MM-dd")
@@ -267,23 +314,32 @@ class AddPurchaseDialog(QDialog):
         self.remarks_input.setText(self.purchase.remarks or "")
 
     def get_items_for_brand(self):
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT DISTINCT i.item_id, i.item_name, i.spec
-            FROM items i
-            JOIN purchases p ON i.item_id = p.item_id
-            WHERE p.brand_id = ?
-            AND i.item_id NOT IN (
-                SELECT item_id FROM purchases WHERE brand_id != ?
+        conn = None
+        try:
+            if not os.path.exists(DB_PATH):
+                log_debug(f"数据库文件不存在: {DB_PATH}")
+                raise FileNotFoundError(f"数据库文件不存在: {DB_PATH}")
+            
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT i.item_id, i.item_name, i.spec
+                FROM items i
+                LEFT JOIN purchases p ON i.item_id = p.item_id
+                WHERE p.brand_id = ? OR p.brand_id IS NULL
+                """,
+                (self.brand_id,)
             )
-            """,
-            (self.brand_id, self.brand_id)
-        )
-        items = cursor.fetchall()
-        conn.close()
-        return items
+            items = cursor.fetchall()
+            log_debug(f"获取品牌 {self.brand_id} 的相关品类: {items}")
+            return items
+        except Exception as e:
+            log_debug(f"获取品牌相关品类时发生错误: {e}\n{traceback.format_exc()}")
+            return []
+        finally:
+            if conn:
+                conn.close()
 
     def init_ui(self):
         self.main_layout = QVBoxLayout()
@@ -303,22 +359,33 @@ class AddPurchaseDialog(QDialog):
         # 步骤 1.5：已有品类模糊搜索
         self.step1_5_widget = QWidget()
         step1_5_layout = QFormLayout()
+        
         self.existing_item_combo = QComboBox()
         self.existing_item_combo.setEditable(True)
         self.existing_item_combo.setInsertPolicy(QComboBox.NoInsert)
-        self.existing_item_combo.clearEditText()
+        self.existing_item_combo.lineEdit().setPlaceholderText("输入关键字进行搜索...")
+
         self.existing_item_model = QStandardItemModel()
-        for item in self.items:
-            display_text = f"{item[1]} ({item[2]})"
+        for item_id, item_name, spec in self.items:
+            display_text = f"{item_name} ({spec})"
             model_item = QStandardItem(display_text)
-            model_item.setData(item[0], Qt.UserRole)
-            model_item.setData(item[1], Qt.UserRole + 1)
-            model_item.setData(item[2], Qt.UserRole + 2)
+            model_item.setData(item_id, Qt.UserRole)
+            model_item.setData(item_name, Qt.UserRole + 1)
+            model_item.setData(spec, Qt.UserRole + 2)
             self.existing_item_model.appendRow(model_item)
-            self.existing_item_combo.addItem(display_text)
-        self.existing_item_combo.setModel(self.existing_item_model)
-        self.existing_item_combo.editTextChanged.connect(self.on_search_text_changed)
-        self.existing_item_combo.currentIndexChanged.connect(self.on_item_selected)
+
+        self.proxy_model.setSourceModel(self.existing_item_model)
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.proxy_model.setFilterKeyColumn(0)
+
+        self.existing_item_combo.setModel(self.proxy_model)
+        # 获取 QComboBox 内部的 completer
+        completer = self.existing_item_combo.completer()
+        # 设置补全模式为只弹出提示，不自动填充文本
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.existing_item_combo.lineEdit().textChanged.connect(self.on_search_text_changed)
+        self.existing_item_combo.activated.connect(self.on_item_selected)
+
         self.existing_item_combo.setMaxVisibleItems(10)
         self.existing_item_combo.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.existing_item_combo.setStyleSheet("""
@@ -406,6 +473,7 @@ class AddPurchaseDialog(QDialog):
 
         self.setLayout(self.main_layout)
 
+        # 设置回车键触发“下一步”
         self.new_or_existing_combo.installEventFilter(self)
         self.existing_item_combo.installEventFilter(self)
         self.new_item_name.installEventFilter(self)
@@ -418,87 +486,70 @@ class AddPurchaseDialog(QDialog):
 
     def eventFilter(self, obj, event):
         if event.type() == event.KeyPress and event.key() in (Qt.Key_Enter, Qt.Key_Return):
-            if self.current_step < 6:
+            # 避免在ComboBox下拉列表打开时，回车触发下一步
+            if isinstance(obj, QComboBox) and obj.view().isVisible():
+                return False
+            if self.next_button.isEnabled():
                 self.next_step()
-            return True
+                return True
         return super().eventFilter(obj, event)
 
     def on_new_or_existing_changed(self, index):
         try:
             log_debug(f"用户选择: 新增/已有选项 = {index}")
-            self.existing_item_combo.editTextChanged.disconnect(self.on_search_text_changed)
-            self.existing_item_combo.currentIndexChanged.disconnect(self.on_item_selected)
-
-            if index == 1:
+            if index == 1:  # 已有品类
                 self.current_step = 1
-                self.existing_item_combo.clearEditText()
+                self.proxy_model.setFilterFixedString("")
+                self.existing_item_combo.lineEdit().clear()
                 if not self.items:
                     QMessageBox.information(self, "提示", "当前品牌没有可用品类，请先添加品类！")
                     self.next_button.setEnabled(False)
                 else:
                     self.next_button.setEnabled(False)
                     QTimer.singleShot(100, self.existing_item_combo.setFocus)
-            else:
+            else:  # 新增品类
                 self.current_step = 2
                 self.next_button.setEnabled(True)
             self.stack.setCurrentIndex(self.current_step)
             self.prev_button.setEnabled(self.current_step > 0)
-
-            self.existing_item_combo.editTextChanged.connect(self.on_search_text_changed)
-            self.existing_item_combo.currentIndexChanged.connect(self.on_item_selected)
         except Exception as e:
             log_debug(f"处理品类选择变化时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"切换品类选择失败: {str(e)}")
 
     def on_search_text_changed(self, text):
-        try:
-            current_time = datetime.datetime.now().timestamp() * 1000
-            if current_time - self.last_search_time < self.search_delay:
-                return
-            self.last_search_time = current_time
+        # 使用代理模型进行过滤
+        self.proxy_model.setFilterFixedString(text)
+        self.next_button.setEnabled(False)
 
-            text = text.lower().strip()
-            self.existing_item_model.clear()
-
-            if not text:
-                for item in self.items:
-                    display_text = f"{item[1]} ({item[2]})"
-                    model_item = QStandardItem(display_text)
-                    model_item.setData(item[0], Qt.UserRole)
-                    model_item.setData(item[1], Qt.UserRole + 1)
-                    model_item.setData(item[2], Qt.UserRole + 2)
-                    self.existing_item_model.appendRow(model_item)
-                self.next_button.setEnabled(False)
-                return
-
-            matched_items = False
-            for item in self.items:
-                display_text = f"{item[1]} ({item[2]})"
-                if text in display_text.lower():
-                    model_item = QStandardItem(display_text)
-                    model_item.setData(item[0], Qt.UserRole)
-                    model_item.setData(item[1], Qt.UserRole + 1)
-                    model_item.setData(item[2], Qt.UserRole + 2)
-                    self.existing_item_model.appendRow(model_item)
-                    matched_items = True
-
-            self.next_button.setEnabled(False)
-            if not matched_items:
-                self.existing_item_combo.setCurrentText("")
-        except Exception as e:
-            log_debug(f"搜索品类时发生错误: {e}\n{traceback.format_exc()}")
-            self.next_button.setEnabled(False)
+        # --- 新增修改：手动控制下拉列表的显示 ---
+        if text:
+            # 如果有匹配项，则弹出下拉列表
+            if self.proxy_model.rowCount() > 0:
+                self.existing_item_combo.showPopup()
+            else:
+                self.existing_item_combo.hidePopup()
+        else:
+            # 如果输入框为空，则隐藏下拉列表
+            self.existing_item_combo.hidePopup()
 
     def on_item_selected(self, index):
         try:
-            if index >= 0 and self.existing_item_combo.currentText():
-                item = self.existing_item_model.item(index)
-                if item:
-                    self.selected_item = {
-                        "item_id": item.data(Qt.UserRole),
-                        "item_name": item.data(Qt.UserRole + 1),
-                        "spec": item.data(Qt.UserRole + 2)
-                    }
+            if index < 0:
+                self.next_button.setEnabled(False)
+                return
+
+            proxy_index = self.proxy_model.index(index, 0)
+            source_index = self.proxy_model.mapToSource(proxy_index)
+            item = self.existing_item_model.itemFromIndex(source_index)
+
+            if item:
+                self.selected_item = {
+                    "item_id": item.data(Qt.UserRole),
+                    "item_name": item.data(Qt.UserRole + 1),
+                    "spec": item.data(Qt.UserRole + 2)
+                }
+                conn = None
+                try:
                     conn = get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
@@ -510,9 +561,14 @@ class AddPurchaseDialog(QDialog):
                     self.unit_combo.setCurrentText(unit)
                     self.unit_combo.setEnabled(False)
                     conn.close()
-                    self.next_button.setEnabled(True)
-                else:
-                    self.next_button.setEnabled(False)
+                except Exception as e:
+                    log_debug(f"查询单位时发生错误: {e}\n{traceback.format_exc()}")
+                    self.unit_combo.setCurrentText("件")
+                    self.unit_combo.setEnabled(False)
+                finally:
+                    if conn:
+                        conn.close()
+                self.next_button.setEnabled(True)
             else:
                 self.next_button.setEnabled(False)
         except Exception as e:
@@ -546,22 +602,34 @@ class AddPurchaseDialog(QDialog):
                     return
                 self.current_step += 1
             elif self.current_step == 4:
+                # 在已有品类流程中，单位是自动选择且禁用的，所以跳过这一步
+                if self.new_or_existing_combo.currentIndex() == 1:
+                    self.current_step += 1
+                else: # 新增品类流程
+                    self.current_step += 1
+            elif self.current_step == 5:
                 if self.quantity_input.value() <= 0:
                     QMessageBox.warning(self, "错误", "数量必须大于 0！")
                     return
                 self.current_step += 1
-            elif self.current_step == 5:
+            elif self.current_step == 6:
                 if self.unit_price_input.value() <= 0:
                     QMessageBox.warning(self, "错误", "单价必须大于 0！")
                     return
                 self.current_step += 1
-            elif self.current_step == 6:
+            elif self.current_step == 7:
                 self.save_purchase()
                 return
 
-            self.stack.setCurrentIndex(self.current_step)
+            # 调整跳转逻辑，跳过不必要的步骤
+            if self.new_or_existing_combo.currentIndex() == 1 and self.current_step == 4: # 已有品类，跳过单位选择
+                self.stack.setCurrentIndex(5) # 直接跳到数量输入
+                self.current_step = 5
+            else:
+                self.stack.setCurrentIndex(self.current_step)
+
             self.prev_button.setEnabled(True)
-            self.next_button.setText("确定" if self.current_step == 6 else "下一步")
+            self.next_button.setText("确定" if self.current_step == 7 else "下一步")
         except Exception as e:
             log_debug(f"点击‘下一步’时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"操作失败: {str(e)}")
@@ -571,15 +639,23 @@ class AddPurchaseDialog(QDialog):
             if self.current_step > 0:
                 if self.current_step in [2, 3]:
                     self.current_step = 0
+                elif self.current_step == 5 and self.new_or_existing_combo.currentIndex() == 1: # 从数量返回
+                    self.current_step = 1 # 返回到品类选择
+                    self.unit_combo.setEnabled(True)
                 elif self.current_step == 4 and self.new_or_existing_combo.currentIndex() == 1:
                     self.current_step = 1
-                    self.unit_combo.setEnabled(True)  # 恢复单位选择
+                    self.unit_combo.setEnabled(True)
                 else:
                     self.current_step -= 1
+                
                 self.stack.setCurrentIndex(self.current_step)
                 self.prev_button.setEnabled(self.current_step > 0)
                 self.next_button.setText("下一步")
                 self.next_button.setEnabled(True)
+                # 如果返回到品类选择，需要禁用下一步按钮
+                if self.current_step == 1:
+                    self.next_button.setEnabled(False)
+
         except Exception as e:
             log_debug(f"点击‘上一步’时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"操作失败: {str(e)}")
@@ -623,7 +699,7 @@ class AddPurchaseDialog(QDialog):
             total_amount = quantity * unit_price
             remarks = self.remarks_input.text().strip() or None
 
-            if self.purchase:  # 修改记录
+            if self.purchase:
                 cursor.execute(
                     """
                     UPDATE purchases SET item_id = ?, brand_id = ?, quantity = ?, unit = ?,
@@ -633,7 +709,7 @@ class AddPurchaseDialog(QDialog):
                     (self.item_id, self.brand_id, quantity, unit, unit_price, total_amount,
                      date, remarks, self.purchase.purchase_id)
                 )
-            else:  # 新增记录
+            else:
                 cursor.execute(
                     """
                     INSERT INTO purchases (item_id, brand_id, quantity, unit, unit_price,
