@@ -11,7 +11,7 @@ StockFlow 是一款用于进货统计与活动完成度的桌面应用软件，�
 环境要求
 
 Python 3.8 或以上版本
-PyQt6
+PyQt5
 SQLite（内置于 Python）
 
 安装步骤
