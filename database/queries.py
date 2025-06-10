@@ -1,18 +1,18 @@
 import sqlite3
 import logging
 from datetime import datetime
-from database.db_setup import DB_PATH
-import os
 from pathlib import Path
+import os
 
-# 获取当前文件所在目录的父目录
-ROOT_DIR = Path(__file__).parent.parent
-# 数据库文件路径
-DB_PATH = os.path.join(ROOT_DIR, "data", "stockflow.db")
+# 基于项目根目录定义数据目录
+BASE_DIR = Path(__file__).parent.parent  # 指向 stockflow/ 目录
+DB_DIR = BASE_DIR / "data"
+DB_PATH = DB_DIR / "stockflow.db"
 
 # 配置日志
+DB_DIR.mkdir(parents=True, exist_ok=True)  # 自动创建 data 目录
 logging.basicConfig(
-    filename=os.path.join(os.path.dirname(DB_PATH), 'debug.log'),
+    filename=os.path.join(DB_DIR, 'debug.log'),
     level=logging.ERROR,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
@@ -20,7 +20,6 @@ logging.basicConfig(
 def get_connection():
     """获取数据库连接"""
     return sqlite3.connect(DB_PATH)
-
 def add_brand(brand_name):
     """添加品牌"""
     conn = get_connection()

@@ -1,11 +1,15 @@
 import sqlite3
 import os
+from pathlib import Path
 
-# 数据库文件路径
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "stockflow.db")
+# 基于项目根目录定义数据目录
+BASE_DIR = Path(__file__).parent.parent  # 指向 stockflow/ 目录
+DB_DIR = BASE_DIR / "data"
+DB_PATH = DB_DIR / "stockflow.db"
 
 def create_database():
     """创建 SQLite 数据库和表结构"""
+    DB_DIR.mkdir(parents=True, exist_ok=True)  # 自动创建 data 目录
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -28,7 +32,7 @@ def create_database():
         )
     """)
 
-    # 创建进货表（添加 ON DELETE CASCADE）
+    # 创建进货表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS purchases (
             purchase_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +68,7 @@ def create_database():
         )
     """)
 
-    # 创建索引以优化查询
+    # 创建索引
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchases_brand ON purchases(brand_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_activities_month ON activities(month)")

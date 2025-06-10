@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from db_setup import DB_PATH
+from db_setup import DB_PATH  # 保持导入
 
 def update_database_schema():
     """更新数据库表结构"""
@@ -32,16 +32,16 @@ def update_database_schema():
             )
         """)
         
-        # 迁移数据（假设现有数据无 unit 和 brand_id，需手动补充）
+        # 迁移数据
         for item in items_data:
             cursor.execute(
                 "INSERT INTO items (item_id, item_name, spec, unit, brand_id) VALUES (?, ?, ?, ?, ?)",
-                (item[0], item[1], item[2], "件", 1)  # 默认单位为"件"，brand_id需根据上下文设置
+                (item[0], item[1], item[2], "件", 1)
             )
         
         print("items 表结构已更新")
     
-    # 检查并更新 activities 表（确保与 queries.py 一致）
+    # 检查并更新 activities 表
     cursor.execute("PRAGMA table_info(activities)")
     existing_columns = [row[1] for row in cursor.fetchall()]
     if 'need_total_target' not in existing_columns or 'need_item_target' not in existing_columns:
