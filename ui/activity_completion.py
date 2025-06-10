@@ -21,7 +21,7 @@ class ActivityCompletionWindow(QWidget):
         self.year = year
         self.month = month
         self.setWindowTitle(f"{self.brand.brand_name} - 活动完成情况")
-        self.setGeometry(100, 100, 1200, 500)  # 增加宽度以适应新列
+        self.setGeometry(100, 100, 1800, 500)  # 增加宽度以适应新列
         self.init_ui()
         self.load_completion_data()
         self.center_on_screen()

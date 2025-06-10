@@ -73,7 +73,7 @@ class ExpenseInfoWindow(QWidget):
                 WHERE brand_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?
             """, (self.brand.brand_id, str(self.year), f"{self.month:02d}"))
             result = cursor.fetchone()
-            original_expense = result[0] if result else 0
+            original_expense = float(result[0]) if result and result[0] is not None else 0.0
             log_debug(f"Original expense retrieved: {original_expense}")
 
             # 获取总销量目标
@@ -84,7 +84,7 @@ class ExpenseInfoWindow(QWidget):
                 WHERE brand_id = ? AND month = ? AND is_total_target = 1
             """, (self.brand.brand_id, f"{self.year}-{self.month:02d}"))
             total_target = cursor.fetchone()
-            total_target_value = total_target[0] if total_target else 0
+            total_target_value = float(total_target[0]) if total_target and total_target[0] is not None else 0.0
             log_debug(f"Total target value: {total_target_value}")
 
             # 获取单品活动数据
@@ -106,10 +106,10 @@ class ExpenseInfoWindow(QWidget):
                 WHERE brand_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?
             """, (self.brand.brand_id, str(self.year), f"{self.month:02d}"))
             result = cursor.fetchone()
-            actual_total_sales = result[0] if result else 0
+            actual_total_sales = float(result[0]) if result and result[0] is not None else 0.0
             log_debug(f"Actual total sales: {actual_total_sales}")
 
-            discount_total = 0
+            discount_total = 0.0
             for activity in activities:
                 activity_id, activity_type, original_price, discount_price, target_value, \
                 need_total_target, need_item_target, item_id = activity
@@ -126,7 +126,7 @@ class ExpenseInfoWindow(QWidget):
                             strftime('%Y', date) = ? AND strftime('%m', date) = ?
                     """, (self.brand.brand_id, item_id, str(self.year), f"{self.month:02d}"))
                     result = cursor.fetchone()
-                    actual_item_sales = result[0] if result else 0
+                    actual_item_sales = float(result[0]) if result and result[0] is not None else 0.0
                     log_debug(f"Actual item sales for item_id {item_id}: {actual_item_sales}")
                     if actual_item_sales < target_value:
                         is_completed = False
@@ -167,28 +167,15 @@ class ExpenseInfoWindow(QWidget):
             log_debug(f"加载支出数据时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"加载支出数据失败: {str(e)}")
 
-
     def closeEvent(self, event):
-        """从 AddBrandWindow 的跟踪列表中移除自身"""
         try:
-            log_debug("PurchaseDetailsWindow 关闭事件触发")
-            
-            # 不再尝试关闭子窗口
-            # for window_dict in [self.activity_windows, self.completion_windows, self.expense_windows]:
-            #     for key, window in list(window_dict.items()):
-            #         try:
-            #             window.close()
-            #         except Exception as e:
-            #             pass
-            
-            # 只处理父窗口关系
+            log_debug("ExpenseInfoWindow 关闭事件触发")
             parent = self.parent()
-            if parent and hasattr(parent, 'purchase_windows'):
-                if self in parent.purchase_windows:
-                    parent.purchase_windows.remove(self)
-                    
+            if parent and hasattr(parent, 'expense_windows'):
+                key = (self.brand.brand_id, self.year, self.month)
+                if key in parent.expense_windows:
+                    del parent.expense_windows[key]
             super().closeEvent(event)
         except Exception as e:
             log_debug(f"关闭窗口时发生错误: {e}")
-            event.accept()  # 确保窗口能够关闭
-
+            event.accept()
