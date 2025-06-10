@@ -14,6 +14,7 @@ import sqlite3
 from database.queries import (
     get_purchases_by_brand, get_connection, add_item, get_all_items, delete_purchase
 )
+import pandas as pd
 
 # 调试日志文件路径
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.log")
@@ -37,6 +38,8 @@ class PurchaseDetailsWindow(QWidget):
         self.year = QDate.currentDate().year()
         self.month = QDate.currentDate().month()
         self.activity_windows = {}  # 新增：跟踪已打开的 ActivityInfoWindow 实例
+        self.completion_windows = {}  # 跟踪 ActivityCompletionWindow 实例
+        self.expense_windows = {}   # 跟踪 ExpenseInfoWindow 实例
         self.setWindowTitle(f"{self.brand.brand_name} - 进货详情")
         self.setGeometry(100, 100, 1400, 600)
         self.init_ui()
@@ -89,22 +92,94 @@ class PurchaseDetailsWindow(QWidget):
         layout.addLayout(page_layout)
 
         # 操作按钮
+        # 操作按钮
         button_layout = QHBoxLayout()
         activity_button = QPushButton("当月活动")
         activity_button.clicked.connect(self.open_activity_screen)
         add_button = QPushButton("增加")
         add_button.clicked.connect(self.add_purchase)
-        export_button = QPushButton("导出")
-        calculate_button = QPushButton("计算")
-        bill_button = QPushButton("账单")
+        completion_button = QPushButton("活动完成情况")
+        completion_button.clicked.connect(self.open_completion_screen)
+        expense_button = QPushButton("支出情况")
+        expense_button.clicked.connect(self.open_expense_screen)
+        bill_button = QPushButton("账单导出")
+        bill_button.clicked.connect(self.export_bill)
         button_layout.addWidget(activity_button)
         button_layout.addWidget(add_button)
-        button_layout.addWidget(export_button)
-        button_layout.addWidget(calculate_button)
+        button_layout.addWidget(completion_button)
+        button_layout.addWidget(expense_button)
         button_layout.addWidget(bill_button)
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
+
+    def open_activity_screen(self):
+        from ui.activity_completion import ActivityCompletionWindow  # 改为新文件名
+        key = (self.brand.brand_id, self.year, self.month)
+        if key in self.activity_windows and self.activity_windows[key].isVisible():
+            self.activity_windows[key].activateWindow()
+            self.activity_windows[key].raise_()
+        else:
+            self.activity_windows[key] = ActivityCompletionWindow(self.brand, self.year, self.month, parent=self)
+            self.activity_windows[key].show()
+
+    def open_expense_screen(self):
+        # 新增：支出情况窗口
+        try:
+            log_debug("尝试打开支出情况窗口")
+            from ui.expense_info import ExpenseInfoWindow
+            key = (self.brand.brand_id, self.year, self.month)
+            
+            # 清理无效引用
+            if key in self.expense_windows:
+                try:
+                    if not self.expense_windows[key].isVisible():
+                        del self.expense_windows[key]
+                except (RuntimeError, ReferenceError):
+                    del self.expense_windows[key]  # 强制移除可能已销毁的对象
+                
+            # 创建新窗口或激活现有窗口
+            if key not in self.expense_windows:
+                self.expense_windows[key] = ExpenseInfoWindow(self.brand, self.year, self.month, parent=None)
+                self.expense_windows[key].setWindowModality(Qt.ApplicationModal)  # 设置为模态窗口
+                self.expense_windows[key].show()
+            else:
+                self.expense_windows[key].activateWindow()
+                self.expense_windows[key].raise_()
+                
+            log_debug(f"支出情况窗口状态: {self.expense_windows[key].isVisible()}")
+            
+        except Exception as e:
+            log_debug(f"打开支出情况窗口时发生错误: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开支出情况窗口失败: {str(e)}")
+
+
+    def export_bill(self):
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT p.date, i.item_name, i.spec, p.unit, p.quantity, p.unit_price, p.total_amount, p.remarks
+                FROM purchases p
+                JOIN items i ON p.item_id = i.item_id
+                WHERE p.brand_id = ? AND strftime('%Y', p.date) = ? AND strftime('%m', p.date) = ?
+                ORDER BY p.date
+            """, (self.brand.brand_id, str(self.year), f"{self.month:02d}"))
+            records = cursor.fetchall()
+            conn.close()
+
+            if not records:
+                QMessageBox.warning(self, "警告", "没有找到符合条件的记录！")
+                return
+
+            df = pd.DataFrame(records, columns=["日期", "品名", "规格", "单位", "数量", "单价", "金额", "备注"])
+            file_name = f"{self.brand.brand_name}_{self.year}年{self.month}月_进货详情.xlsx"
+            file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", file_name)
+            df.to_excel(file_path, index=False, engine='openpyxl')
+            QMessageBox.information(self, "成功", f"账单已导出到：{file_path}")
+        except Exception as e:
+            log_debug(f"导出账单时发生错误: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"导出账单失败: {str(e)}")
 
     def setup_date_filter(self):
         date_layout = QHBoxLayout()
@@ -284,6 +359,21 @@ class PurchaseDetailsWindow(QWidget):
             if self in parent.purchase_windows:
                 parent.purchase_windows.remove(self)
         super().closeEvent(event)
+
+    def open_completion_screen(self):
+        from ui.activity_completion import ActivityCompletionWindow
+        key = (self.brand.brand_id, self.year, self.month)
+        if key in self.completion_windows:
+            try:
+                if self.completion_windows[key].isVisible():
+                    self.completion_windows[key].activateWindow()
+                    self.completion_windows[key].raise_()
+                    return
+            except RuntimeError:
+                del self.completion_windows[key]  # 移除已删除的无效引用
+        self.completion_windows[key] = ActivityCompletionWindow(self.brand, self.year, self.month, parent=None)
+        self.completion_windows[key].setWindowModality(Qt.ApplicationModal)
+        self.completion_windows[key].show()
 
 
 class AddPurchaseDialog(QDialog):
