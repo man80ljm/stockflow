@@ -31,7 +31,8 @@ def log_debug(message):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         f.write(f"[{timestamp}] {message}\n")
 
-class ActivityInfoWindow(QMainWindow):
+from ui.base_window import CenteredMainWindow  # 导入基类
+class ActivityInfoWindow(CenteredMainWindow):
     """活动信息管理窗口"""
     
     def __init__(self, brand, year, month,parent=None):
@@ -40,7 +41,8 @@ class ActivityInfoWindow(QMainWindow):
         self.year = year
         self.month = month
         self.setWindowTitle(f"{brand.brand_name} - {year}年{month}月活动")
-        self.setGeometry(100, 100, 1600, 600)
+        self.resize(1600, 600)
+        self.center_on_screen()  # 确保在调整大小后居中
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -189,7 +191,17 @@ class ActivityInfoWindow(QMainWindow):
             delete_activity(activity_id)
             self.load_activities()
 
-class AddItemActivityDialog(QDialog):
+    def closeEvent(self, event):
+        """在窗口关闭时从父窗口的 activity_windows 字典中移除自身"""
+        parent = self.parent()
+        if parent and hasattr(parent, 'activity_windows'):
+            key = (self.brand.brand_id, self.year, self.month)
+            if key in parent.activity_windows:
+                del parent.activity_windows[key]
+        super().closeEvent(event)
+
+from ui.base_window import CenteredDialog  # 导入基类
+class AddItemActivityDialog(CenteredDialog):
     """添加单品活动对话框"""
     
     def __init__(self, brand_id, year, month):
@@ -199,7 +211,8 @@ class AddItemActivityDialog(QDialog):
         self.month = month
         self.selected_item = None
         self.setWindowTitle("添加单品活动")
-        self.setGeometry(200, 200, 450, 350)
+        self.resize(450, 350)
+        self.center_on_screen()  # 确保在调整大小后居中
         self.init_ui()
 
     def init_ui(self):
@@ -315,12 +328,28 @@ class AddItemActivityDialog(QDialog):
         self.next_button.clicked.connect(self.next_step)
         self.finish_button.clicked.connect(self.save_activity)
 
+        # 添加 need_item 的状态变化监听
+        self.need_item.toggled.connect(self.update_target_value_state)
+
+        # 初始化目标值输入框状态（默认未勾选，禁用）
+        self.update_target_value_state(False)
+
         # 注意：这里只连接信号，不做任何按钮状态的判断
         self.new_item_radio.toggled.connect(self.toggle_item_view)
         self.current_step = 0
         
         self.toggle_item_view() # 初始化时调用一次，确保界面正确
         self.update_buttons()   # 初始化时调用一次，确保按钮状态正确
+
+    # 添加 update_target_value_state 方法
+    def update_target_value_state(self, checked):
+        """根据 '需完成单品销量' 复选框状态更新 '目标值' 输入框"""
+        if checked:
+            self.target_value.setEnabled(True)
+            self.target_value.clear()  # 清空内容，允许用户输入
+        else:
+            self.target_value.setEnabled(False)
+            self.target_value.setText("0")  # 设置为默认值 0
 
     def toggle_item_view(self):
         """
@@ -439,62 +468,59 @@ class AddItemActivityDialog(QDialog):
         item_id = None
         item_name = None
         
-        # 检查当月活动中是否已存在相同商品
-        conn = get_connection()
-        cursor = conn.cursor()
-        try:
-            if self.new_item_radio.isChecked():
-                item_name = self.new_item_name.text().strip()
-                spec = self.new_item_spec.text().strip()
-                unit = self.unit_combo.currentText()
-                
-                # 检查 items 表中是否已存在相同商品
-                cursor.execute(
-                    "SELECT item_id FROM items WHERE item_name = ? AND spec = ? AND unit = ? AND brand_id = ?",
-                    (item_name, spec, unit, self.brand_id)
-                )
-                existing_item = cursor.fetchone()
-                if existing_item:
-                    QMessageBox.warning(self, "错误", f"商品 '{item_name} ({spec}, {unit})' 已存在，无法重复添加！")
-                    return
-                item_id = add_item(item_name, spec, unit, self.brand_id)
-            else:
-                if self.selected_item:
-                    item_id = self.selected_item['item_id']
-                    item_name = self.selected_item['item_name']
+        with get_connection() as conn:  # 使用 with 语句自动管理连接
+            cursor = conn.cursor()
+            try:
+                if self.new_item_radio.isChecked():
+                    item_name = self.new_item_name.text().strip()
+                    spec = self.new_item_spec.text().strip()
+                    unit = self.unit_combo.currentText()
+                    
+                    # 检查 items 表中是否已存在相同商品
+                    cursor.execute(
+                        "SELECT item_id FROM items WHERE item_name = ? AND spec = ? AND unit = ? AND brand_id = ?",
+                        (item_name, spec, unit, self.brand_id)
+                    )
+                    existing_item = cursor.fetchone()
+                    if existing_item:
+                        QMessageBox.warning(self, "错误", f"商品 '{item_name} ({spec}, {unit})' 已存在，无法重复添加！")
+                        return
+                    item_id = add_item(item_name, spec, unit, self.brand_id)
                 else:
-                    QMessageBox.warning(self, "错误", "请选择一个有效的已有品类。")
+                    if self.selected_item:
+                        item_id = self.selected_item['item_id']
+                        item_name = self.selected_item['item_name']
+                    else:
+                        QMessageBox.warning(self, "错误", "请选择一个有效的已有品类。")
+                        return
+                
+                # 检查当月活动中是否已存在该商品的活动
+                month_str = f"{self.year}-{self.month:02d}"
+                cursor.execute(
+                    "SELECT COUNT(*) FROM activities WHERE brand_id = ? AND month = ? AND item_id = ?",
+                    (self.brand_id, month_str, item_id)
+                )
+                if cursor.fetchone()[0] > 0:
+                    QMessageBox.warning(self, "错误", f"当月活动中已存在商品 '{item_name}' 的活动，无法重复添加！")
                     return
-            
-            # 检查当月活动中是否已存在该商品的活动
-            month_str = f"{self.year}-{self.month:02d}"
-            cursor.execute(
-                "SELECT COUNT(*) FROM activities WHERE brand_id = ? AND month = ? AND item_id = ?",
-                (self.brand_id, month_str, item_id)
-            )
-            if cursor.fetchone()[0] > 0:
-                QMessageBox.warning(self, "错误", f"当月活动中已存在商品 '{item_name}' 的活动，无法重复添加！")
-                return
-            
-            activity_type = self.activity_type.currentText()
-            need_total = self.need_total.isChecked()
-            need_item = self.need_item.isChecked()
-            target_value = float(self.target_value.text()) if self.target_value.text() else 0
-            original_price = float(self.original_price.text()) if self.original_price.text() else 0
-            discount_price = float(self.discount_price.text()) if self.discount_price.text() else 0
-            
-            if activity_type == "案后结(不与总指标挂钩)":
-                need_total = False
-            
-            add_activity(self.brand_id, f"{self.year}-{self.month:02d}", False, item_id,
-                        activity_type, need_total, need_item, target_value,
-                        original_price, discount_price)
-            self.accept()
-        except Exception as e:
-            log_activity_debug(f"保存活动时发生错误: {e}\n{traceback.format_exc()}")
-            QMessageBox.critical(self, "错误", f"保存失败: {str(e)}")
-        finally:
-            conn.close()
+                
+                activity_type = self.activity_type.currentText()
+                need_total = self.need_total.isChecked()
+                need_item = self.need_item.isChecked()
+                target_value = float(self.target_value.text()) if self.target_value.text() else 0
+                original_price = float(self.original_price.text()) if self.original_price.text() else 0
+                discount_price = float(self.discount_price.text()) if self.discount_price.text() else 0
+                
+                if activity_type == "案后结(不与总指标挂钩)":
+                    need_total = False
+                
+                add_activity(self.brand_id, f"{self.year}-{self.month:02d}", False, item_id,
+                            activity_type, need_total, need_item, target_value,
+                            original_price, discount_price)
+                self.accept()
+            except Exception as e:
+                log_activity_debug(f"保存活动时发生错误: {e}\n{traceback.format_exc()}")
+                QMessageBox.critical(self, "错误", f"保存失败: {str(e)}")
 
     def validate_inputs(self):
         """验证输入数据"""
@@ -505,6 +531,10 @@ class AddItemActivityDialog(QDialog):
                     return False
                 if float(self.discount_price.text()) >= float(self.original_price.text()):
                     QMessageBox.warning(self, "错误", "优惠价必须低于原价")
+                    return False
+                # 如果 '需完成单品销量' 未勾选，验证目标值是否为 0
+                if not self.need_item.isChecked() and float(self.target_value.text()) != 0:
+                    QMessageBox.warning(self, "错误", "当 '需完成单品销量' 未勾选时，目标值必须为 0")
                     return False
             except ValueError:
                 QMessageBox.warning(self, "错误", "价格和目标值必须是有效的数字")

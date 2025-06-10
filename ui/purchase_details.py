@@ -25,8 +25,9 @@ def log_debug(message):
         f.write(f"[{timestamp}] {message}\n")
 
 class PurchaseDetailsWindow(QWidget):
-    def __init__(self, brand):
-        super().__init__()
+    def __init__(self, brand, parent=None):
+        super().__init__(parent)
+        log_debug(f"初始化 PurchaseDetailsWindow for brand: {brand.brand_name}")
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.brand = brand
         self.current_page = 1
@@ -35,12 +36,13 @@ class PurchaseDetailsWindow(QWidget):
         self.purchases = []
         self.year = QDate.currentDate().year()
         self.month = QDate.currentDate().month()
+        self.activity_windows = {}  # 新增：跟踪已打开的 ActivityInfoWindow 实例
         self.setWindowTitle(f"{self.brand.brand_name} - 进货详情")
         self.setGeometry(100, 100, 1400, 600)
         self.init_ui()
         self.load_purchases()
         self.center_on_screen()
-
+        log_debug(f"完成 PurchaseDetailsWindow 初始化 for brand: {brand.brand_name}")
     def center_on_screen(self):
         """将窗口移动到屏幕中央"""
         screen = QApplication.primaryScreen().geometry()
@@ -208,8 +210,15 @@ class PurchaseDetailsWindow(QWidget):
 
     def open_activity_screen(self):
         from ui.activity_info import ActivityInfoWindow
-        self.activity_window = ActivityInfoWindow(self.brand, self.year, self.month,parent=self)
-        self.activity_window.show()
+        key = (self.brand.brand_id, self.year, self.month)  # 使用 (brand_id, year, month) 作为键
+        if key in self.activity_windows and self.activity_windows[key].isVisible():
+            # 如果窗口已存在且可见，激活窗口
+            self.activity_windows[key].activateWindow()
+            self.activity_windows[key].raise_()
+        else:
+            # 创建新窗口并存储
+            self.activity_windows[key] = ActivityInfoWindow(self.brand, self.year, self.month, parent=self)
+            self.activity_windows[key].show()
 
     def add_purchase(self):
         try:
@@ -268,6 +277,15 @@ class PurchaseDetailsWindow(QWidget):
             log_debug(f"更新备注时发生错误: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"更新备注失败: {str(e)}")
 
+    def closeEvent(self, event):
+        """从 AddBrandWindow 的跟踪列表中移除自身"""
+        parent = self.parent()
+        if parent and hasattr(parent, 'purchase_windows'):
+            if self in parent.purchase_windows:
+                parent.purchase_windows.remove(self)
+        super().closeEvent(event)
+
+
 class AddPurchaseDialog(QDialog):
     def __init__(self, brand_id, parent=None, purchase=None):
         super().__init__(parent)
@@ -307,31 +325,27 @@ class AddPurchaseDialog(QDialog):
         self.remarks_input.setText(self.purchase.remarks or "")
 
     def get_items_for_brand(self):
-        conn = None
         try:
             if not os.path.exists(DB_PATH):
                 log_debug(f"数据库文件不存在: {DB_PATH}")
                 raise FileNotFoundError(f"数据库文件不存在: {DB_PATH}")
             
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT i.item_id, i.item_name, i.spec, i.unit
-                FROM items i
-                WHERE i.brand_id = ?
-                """,
-                (self.brand_id,)
-            )
-            items = cursor.fetchall()
-            log_debug(f"获取品牌 {self.brand_id} 的相关品类: {items}")
-            return items
+            with get_connection() as conn:  # 使用 with 语句自动管理连接
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT i.item_id, i.item_name, i.spec, i.unit
+                    FROM items i
+                    WHERE i.brand_id = ?
+                    """,
+                    (self.brand_id,)
+                )
+                items = cursor.fetchall()
+                log_debug(f"获取品牌 {self.brand_id} 的相关品类: {items}")
+                return items
         except Exception as e:
             log_debug(f"获取品牌相关品类时发生错误: {e}\n{traceback.format_exc()}")
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def init_ui(self):
         self.main_layout = QVBoxLayout()
@@ -679,57 +693,60 @@ class AddPurchaseDialog(QDialog):
                 log_debug(f"数据库文件不存在: {DB_PATH}")
                 raise FileNotFoundError(f"数据库文件不存在: {DB_PATH}")
 
-            conn = get_connection()
-            cursor = conn.cursor()
+            with get_connection() as conn:  # 使用 with 语句
+                cursor = conn.cursor()
 
-            if self.new_or_existing_combo.currentIndex() == 0:
-                item_name = self.new_item_name.text().strip()
-                spec = self.new_item_spec.text().strip()
-                unit = self.unit_combo.currentText()
-                try:
-                    self.item_id = add_item(item_name, spec, unit, self.brand_id)
-                except sqlite3.IntegrityError:
-                    cursor.execute(
-                        "SELECT item_id FROM items WHERE item_name = ? AND spec = ? AND unit = ? AND brand_id = ?",
-                        (item_name, spec, unit, self.brand_id)
-                    )
-                    result = cursor.fetchone()
-                    if result:
-                        self.item_id = result[0]
-                    else:
+                if self.new_or_existing_combo.currentIndex() == 0:
+                    item_name = self.new_item_name.text().strip()
+                    spec = self.new_item_spec.text().strip()
+                    unit = self.unit_combo.currentText()
+                    try:
+                        cursor.execute(
+                            "SELECT item_id FROM items WHERE item_name = ? AND spec = ? AND unit = ? AND brand_id = ?",
+                            (item_name, spec, unit, self.brand_id)
+                        )
+                        existing_item = cursor.fetchone()
+                        if existing_item:
+                            self.item_id = existing_item[0]
+                        else:
+                            cursor.execute(
+                                "INSERT INTO items (item_name, spec, unit, brand_id) VALUES (?, ?, ?, ?)",
+                                (item_name, spec, unit, self.brand_id)
+                            )
+                            self.item_id = cursor.lastrowid
+                    except sqlite3.IntegrityError:
                         raise Exception("无法创建或找到商品")
-            else:
-                self.item_id = self.selected_item["item_id"]
+                else:
+                    self.item_id = self.selected_item["item_id"]
 
-            date = self.date_input.date().toString("yyyy-MM-dd")
-            unit = self.unit_combo.currentText()
-            quantity = int(self.quantity_input.value())
-            unit_price = float(self.unit_price_input.value())
-            total_amount = quantity * unit_price
-            remarks = self.remarks_input.text().strip() or None
+                date = self.date_input.date().toString("yyyy-MM-dd")
+                unit = self.unit_combo.currentText()
+                quantity = int(self.quantity_input.value())
+                unit_price = float(self.unit_price_input.value())
+                total_amount = quantity * unit_price
+                remarks = self.remarks_input.text().strip() or None
 
-            if self.purchase:
-                cursor.execute(
-                    """
-                    UPDATE purchases SET item_id = ?, brand_id = ?, quantity = ?, unit = ?,
-                    unit_price = ?, total_amount = ?, date = ?, remarks = ?
-                    WHERE purchase_id = ?
-                    """,
-                    (self.item_id, self.brand_id, quantity, unit, unit_price, total_amount,
-                     date, remarks, self.purchase.purchase_id)
-                )
-            else:
-                cursor.execute(
-                    """
-                    INSERT INTO purchases (item_id, brand_id, quantity, unit, unit_price,
-                    total_amount, date, remarks)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (self.item_id, self.brand_id, quantity, unit, unit_price, total_amount,
-                     date, remarks)
-                )
-            conn.commit()
-            conn.close()
+                if self.purchase:
+                    cursor.execute(
+                        """
+                        UPDATE purchases SET item_id = ?, brand_id = ?, quantity = ?, unit = ?,
+                        unit_price = ?, total_amount = ?, date = ?, remarks = ?
+                        WHERE purchase_id = ?
+                        """,
+                        (self.item_id, self.brand_id, quantity, unit, unit_price, total_amount,
+                        date, remarks, self.purchase.purchase_id)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO purchases (item_id, brand_id, quantity, unit, unit_price,
+                        total_amount, date, remarks)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (self.item_id, self.brand_id, quantity, unit, unit_price, total_amount,
+                        date, remarks)
+                    )
+                # 提交事务由 with 语句自动处理
             QMessageBox.information(self, "成功", "进货记录保存成功！")
             self.accept()
         except Exception as e:

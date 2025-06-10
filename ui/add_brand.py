@@ -1,7 +1,20 @@
+import os
+import datetime
+import traceback  # 添加导入
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QWidget, QGridLayout, QDialog, QLineEdit, QFormLayout, QMessageBox, QMenu
 from PyQt5.QtCore import Qt
 from models.brand import add_brand, get_all_brands, Brand
 from ui.purchase_details import PurchaseDetailsWindow
+from PyQt5 import  sip
+from PyQt5.QtCore import Qt, QTimer  # 添加 QTimer
+
+# 定义 log_debug 函数
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.log")
+def log_debug(message):
+    """记录调试信息到文件"""
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        f.write(f"[{timestamp}] {message}\n")
 
 class AddBrandWindow(QWidget):
     def __init__(self):
@@ -9,6 +22,7 @@ class AddBrandWindow(QWidget):
         self.setWindowTitle("品牌管理")
         self.setGeometry(100, 100, 600, 400)
         self.brands = []
+        self.purchase_windows = []  # 添加列表以跟踪打开的 PurchaseDetailsWindow
         self.init_ui()
         self.load_brands()
         # 将窗口移动到屏幕中央
@@ -95,9 +109,34 @@ class AddBrandWindow(QWidget):
             self.load_brands()
 
     def open_purchase_details(self, brand):
-        """打开进货详情界面"""
-        self.purchase_window = PurchaseDetailsWindow(brand)
-        self.purchase_window.show()
+        """打开进货详情界面，确保只有一个 PurchaseDetailsWindow 打开"""
+        log_debug(f"调用 open_purchase_details for brand: {brand.brand_name}")
+        
+        # 先关闭所有当前打开的窗口
+        for window in self.purchase_windows[:]:  # 使用列表副本进行迭代
+            try:
+                if window is not None:
+                    window.close()
+                    log_debug(f"关闭现有 PurchaseDetailsWindow")
+            except Exception as e:
+                log_debug(f"关闭窗口时发生错误: {str(e)}")
+        
+        # 清空列表
+        self.purchase_windows.clear()
+        log_debug("清空 purchase_windows 列表")
+        
+        # 创建并显示新窗口
+        try:
+            purchase_window = PurchaseDetailsWindow(brand)
+            self.purchase_windows.append(purchase_window)
+            log_debug(f"创建 PurchaseDetailsWindow for brand: {brand.brand_name}")
+            purchase_window.show()
+            log_debug("调用 purchase_window.show()")
+        except Exception as e:
+            log_debug(f"创建 PurchaseDetailsWindow 失败: {str(e)}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开进货详情失败: {str(e)}")
+
+
 
     def show_context_menu(self, button, pos, brand):
         """显示右键菜单"""
@@ -121,6 +160,19 @@ class AddBrandWindow(QWidget):
     def open_filter_screen(self):
         """打开筛选界面"""
         QMessageBox.information(self, "提示", "筛选界面尚未实现！")
+
+    def closeEvent(self, event):
+        """关闭窗口时关闭所有相关的 PurchaseDetailsWindow"""
+        for window in self.purchase_windows[:]:  # 使用列表副本
+            try:
+                if window is not None:
+                    window.close()
+            except Exception as e:
+                log_debug(f"关闭窗口时发生错误: {str(e)}")
+        
+        self.purchase_windows.clear()  # 清空列表
+        super().closeEvent(event)
+
 
 class AddBrandDialog(QDialog):
     def __init__(self, parent=None):
