@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from db_setup import DB_PATH  # 保持导入
+from database.db_setup import DB_PATH  # 修改为 package 导入
 
 def update_database_schema():
     """更新数据库表结构"""

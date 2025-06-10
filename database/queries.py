@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 import os
+import traceback  # 添加此行
 
 # 基于项目根目录定义数据目录
 BASE_DIR = Path(__file__).parent.parent  # 指向 stockflow/ 目录
@@ -208,9 +209,14 @@ def get_monthly_activities(brand_id, year, month):
         """, (brand_id, month_str))
         
         activities = cursor.fetchall()
+        if not activities:
+            logging.debug(f"无活动数据 for brand_id: {brand_id}, month: {month_str}")
         return activities
-    except sqlite3.Error as e:
-        logging.error(f"获取月度活动失败: {e}")
+    except sqlite3.OperationalError as e:
+        logging.error(f"查询活动数据失败: {e}\n{traceback.format_exc()}")
+        return []  # 返回空列表，避免崩溃
+    except Exception as e:
+        logging.error(f"意外错误: {e}\n{traceback.format_exc()}")
         return []
     finally:
         conn.close()

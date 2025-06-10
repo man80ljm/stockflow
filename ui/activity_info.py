@@ -85,6 +85,12 @@ class ActivityInfoWindow(CenteredMainWindow):
         activities = get_monthly_activities(self.brand.brand_id, self.year, self.month)
         self.activity_table.setRowCount(0)
         seen_items = set()  # 跟踪已添加的 item_id
+        if not activities:
+            self.activity_table.insertRow(0)
+            self.activity_table.setItem(0, 0, QTableWidgetItem("无数据"))
+            log_activity_debug(f"无活动数据 for brand: {self.brand.brand_name}, year: {self.year}, month: {self.month}")
+            return
+        
         for activity in activities:
             row = self.activity_table.rowCount()
             activity_id, is_total, item_id, activity_type, need_total, need_item, target_value, \
@@ -100,7 +106,6 @@ class ActivityInfoWindow(CenteredMainWindow):
             seen_items.add(item_id)
             
             self.activity_table.insertRow(row)
-
 
             # 第0列: 商品名称
             item0 = QTableWidgetItem(item_name or "")
@@ -142,27 +147,18 @@ class ActivityInfoWindow(CenteredMainWindow):
             item7.setTextAlignment(Qt.AlignCenter)
             self.activity_table.setItem(row, 7, item7)
             
-            # 第8列: 操作按钮 (按钮默认在单元格内居中，无需修改)
+            # 第8列: 操作按钮
             delete_btn = QPushButton("删除")
             delete_btn.clicked.connect(lambda checked, aid=activity_id: self.delete_activity(aid))
             self.activity_table.setCellWidget(row, 8, delete_btn)
 
-        # --- 以下是之前做的列宽自适应修改 ---
-
-        # 首先，让列宽自动适应内容
-        self.activity_table.resizeColumnsToContents()
-
-        # 然后，为每一列增加额外的边距以提高可读性
-        font_metrics = self.activity_table.fontMetrics()
-        # 计算4个大写字母'M'的像素宽度作为边距
-        padding = font_metrics.horizontalAdvance('M') * 4 
-        
-        # 循环遍历所有列
-        for col in range(self.activity_table.columnCount()):
-            # 获取当前列的宽度
-            current_width = self.activity_table.columnWidth(col)
-            # 设置新的宽度（原宽度 + 边距）
-            self.activity_table.setColumnWidth(col, current_width + padding)
+            # 列宽自适应
+            self.activity_table.resizeColumnsToContents()
+            font_metrics = self.activity_table.fontMetrics()
+            padding = font_metrics.horizontalAdvance('M') * 4
+            for col in range(self.activity_table.columnCount()):
+                current_width = self.activity_table.columnWidth(col)
+                self.activity_table.setColumnWidth(col, current_width + padding)
 
 
     def save_total_target(self):
