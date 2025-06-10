@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>modulegraph cross reference for hook.py, main.py, pyi_rth_inspect.py, pyi_rth_multiprocessing.py, pyi_rth_pkgutil.py, pyi_rth_pyqt5.py, pyi_rth_setuptools.py</title>
+    <title>modulegraph cross reference for main.py, pyi_rth_inspect.py, pyi_rth_multiprocessing.py, pyi_rth_pkgutil.py, pyi_rth_pyqt5.py, pyi_rth_setuptools.py</title>
     <style>
       .node { padding: 0.5em 0 0.5em; border-top: thin grey dotted; }
       .moduletype { font: smaller italic }
@@ -11,32 +11,15 @@
     </style>
   </head>
   <body>
-    <h1>modulegraph cross reference for hook.py, main.py, pyi_rth_inspect.py, pyi_rth_multiprocessing.py, pyi_rth_pkgutil.py, pyi_rth_pyqt5.py, pyi_rth_setuptools.py</h1>
-
-<div class="node">
-  <a name="hook.py"></a>
-  <a target="code" href="///D:/stockflow/hook.py" type="text/plain"><tt>hook.py</tt></a>
-<span class="moduletype">Script</span>  <div class="import">
-imports:
-    <a href="#'database.queries'">'database.queries'</a>
- &#8226;   <a href="#os">os</a>
- &#8226;   <a href="#sys">sys</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#main.py">main.py</a>
-
-  </div>
-
-</div>
+    <h1>modulegraph cross reference for main.py, pyi_rth_inspect.py, pyi_rth_multiprocessing.py, pyi_rth_pkgutil.py, pyi_rth_pyqt5.py, pyi_rth_setuptools.py</h1>
 
 <div class="node">
   <a name="main.py"></a>
   <a target="code" href="///D:/stockflow/main.py" type="text/plain"><tt>main.py</tt></a>
 <span class="moduletype">Script</span>  <div class="import">
 imports:
-    <a href="#PyQt5">PyQt5</a>
+    <a href="#'database.update_db'">'database.update_db'</a>
+ &#8226;   <a href="#PyQt5">PyQt5</a>
  &#8226;   <a href="#PyQt5.QtWidgets">PyQt5.QtWidgets</a>
  &#8226;   <a href="#_collections_abc">_collections_abc</a>
  &#8226;   <a href="#_weakrefset">_weakrefset</a>
@@ -46,6 +29,7 @@ imports:
  &#8226;   <a href="#collections.abc">collections.abc</a>
  &#8226;   <a href="#copyreg">copyreg</a>
  &#8226;   <a href="#database">database</a>
+ &#8226;   <a href="#db_setup">db_setup</a>
  &#8226;   <a href="#encodings">encodings</a>
  &#8226;   <a href="#encodings.aliases">encodings.aliases</a>
  &#8226;   <a href="#encodings.ascii">encodings.ascii</a>
@@ -172,7 +156,6 @@ imports:
  &#8226;   <a href="#functools">functools</a>
  &#8226;   <a href="#genericpath">genericpath</a>
  &#8226;   <a href="#heapq">heapq</a>
- &#8226;   <a href="#hook.py">hook.py</a>
  &#8226;   <a href="#io">io</a>
  &#8226;   <a href="#keyword">keyword</a>
  &#8226;   <a href="#linecache">linecache</a>
@@ -314,11 +297,11 @@ imported by:
 </div>
 
 <div class="node">
-  <a name="'database.queries'"></a>
-  <a target="code" href="" type="text/plain"><tt>'database.queries'</tt></a>
+  <a name="'database.update_db'"></a>
+  <a target="code" href="" type="text/plain"><tt>'database.update_db'</tt></a>
 <span class="moduletype">MissingModule</span>  <div class="import">
 imported by:
-    <a href="#hook.py">hook.py</a>
+    <a href="#main.py">main.py</a>
 
   </div>
 
@@ -5291,6 +5274,23 @@ imports:
   <div class="import">
 imported by:
     <a href="#dateutil.tz.tz">dateutil.tz.tz</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="db_setup"></a>
+  <a target="code" href="///D:/stockflow/database/db_setup.py" type="text/plain"><tt>db_setup</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#os">os</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
 
   </div>
 
@@ -24202,6 +24202,7 @@ imported by:
  &#8226;   <a href="#contextlib">contextlib</a>
  &#8226;   <a href="#ctypes">ctypes</a>
  &#8226;   <a href="#dateutil.tz.tz">dateutil.tz.tz</a>
+ &#8226;   <a href="#db_setup">db_setup</a>
  &#8226;   <a href="#distutils._msvccompiler">distutils._msvccompiler</a>
  &#8226;   <a href="#distutils.archive_util">distutils.archive_util</a>
  &#8226;   <a href="#distutils.ccompiler">distutils.ccompiler</a>
@@ -24232,7 +24233,6 @@ imported by:
  &#8226;   <a href="#gettext">gettext</a>
  &#8226;   <a href="#glob">glob</a>
  &#8226;   <a href="#gzip">gzip</a>
- &#8226;   <a href="#hook.py">hook.py</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
@@ -43683,7 +43683,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#main.py">main.py</a>
+    <a href="#db_setup">db_setup</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#pandas.io.sql">pandas.io.sql</a>
  &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#sqlite3.dbapi2">sqlite3.dbapi2</a>
@@ -44132,7 +44133,6 @@ imported by:
  &#8226;   <a href="#gettext">gettext</a>
  &#8226;   <a href="#glob">glob</a>
  &#8226;   <a href="#gzip">gzip</a>
- &#8226;   <a href="#hook.py">hook.py</a>
  &#8226;   <a href="#http.client">http.client</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#importlib">importlib</a>

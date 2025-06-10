@@ -269,6 +269,7 @@
   ('dateutil.zoneinfo',
    'D:\\stockflow\\venv\\Lib\\site-packages\\dateutil\\zoneinfo\\__init__.py',
    'PYMODULE'),
+  ('db_setup', 'D:\\stockflow\\database\\db_setup.py', 'PYMODULE'),
   ('decimal',
    'C:\\Users\\huang\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\decimal.py',
    'PYMODULE'),

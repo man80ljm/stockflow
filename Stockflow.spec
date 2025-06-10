@@ -1,31 +1,17 @@
-import os
-import sys
-
-def resource_path(relative_path):
-    """获取资源路径，兼容打包环境"""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
-
-# 确保 data 目录存在
-if hasattr(sys, '_MEIPASS'):
-    data_dir = os.path.join(sys._MEIPASS, "data")
-    os.makedirs(data_dir, exist_ok=True)
-
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=['D:\\stockflow\\database'],  # 显式添加 database 目录
     binaries=[],
     datas=[
         ('ui', 'ui'),
         ('database', 'database'),
         ('models', 'models'),
         ('utils', 'utils'),
-        ('data', 'data'),  # 包含 data 目录
+        ('data', 'data'),
     ],
-    hiddenimports=['pandas', 'openpyxl', 'PyQt5'],
+    hiddenimports=['pandas', 'openpyxl', 'PyQt5', 'db_setup'],  # 显式包含 db_setup
     hookspath=[],
-    runtime_hooks=['hook.py'],  # 添加运行时钩子
+    runtime_hooks=[],
     excludes=[],
     noarchive=False,
 )

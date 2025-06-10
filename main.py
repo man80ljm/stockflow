@@ -4,6 +4,7 @@ import sqlite3
 from PyQt5.QtWidgets import QApplication
 from ui.add_brand import AddBrandWindow
 from database.db_setup import create_database, DB_PATH
+from database.update_db import update_database_schema  # 导入 update_db 模块
 
 def check_database_schema():
     """检查数据库表结构是否与预期一致"""
@@ -12,7 +13,7 @@ def check_database_schema():
                       'activity_type', 'need_total_target', 'need_item_target', 'target_value',
                       'original_price', 'discount_price'],
         'brands': ['brand_id', 'brand_name', 'created_at'],
-        'items': ['item_id', 'item_name', 'spec'],
+        'items': ['item_id', 'item_name', 'spec', 'unit', 'brand_id'],  # 包含 unit 和 brand_id
         'purchases': ['purchase_id', 'item_id', 'brand_id', 'quantity', 'unit', 'unit_price',
                      'total_amount', 'date', 'remarks']
     }
@@ -27,17 +28,21 @@ def check_database_schema():
         
         if missing_columns:
             conn.close()
-            raise RuntimeError(f"表 {table} 缺少列: {missing_columns}. 请运行 database/update_db.py 更新数据库。")
+            update_database_schema()  # 自动更新数据库
+            break
     
     conn.close()
 
 if __name__ == "__main__":
     try:
+        # 确保数据目录存在（手动创建）
+        if not os.path.exists("data"):
+            os.makedirs("data")
         # 确保数据库文件存在并创建
         if not os.path.exists(DB_PATH):
             create_database()
         else:
-            # 检查现有数据库的 schema
+            # 检查现有数据库的 schema 并自动更新
             check_database_schema()
         
         app = QApplication(sys.argv)

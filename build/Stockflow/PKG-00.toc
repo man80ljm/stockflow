@@ -28,7 +28,6 @@
   ('pyiboot01_bootstrap',
    'D:\\stockflow\\venv\\Lib\\site-packages\\PyInstaller\\loader\\pyiboot01_bootstrap.py',
    'PYSOURCE'),
-  ('hook', 'D:\\stockflow\\hook.py', 'PYSOURCE'),
   ('pyi_rth_pyqt5',
    'D:\\stockflow\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_pyqt5.py',
    'PYSOURCE'),
