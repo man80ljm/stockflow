@@ -128,10 +128,33 @@ class ActivityCompletionWindow(QWidget):
                 completion_status = "是" if is_completed else "否"
 
                 # 计算单品支出相关数据
-                item_original_expense = actual_item_sales * (original_price or 0)  # 单品初始支出
+                # --- 修改后代码 ---
+                cursor.execute("""
+                    SELECT SUM(total_amount)
+                    FROM purchases
+                    WHERE brand_id = ? AND item_id = ? AND 
+                        strftime('%Y', date) = ? AND strftime('%m', date) = ?
+                """, (self.brand.brand_id, item_id, str(self.year), f"{self.month:02d}"))
+                result = cursor.fetchone()
+                item_original_expense = float(result[0]) if result and result[0] is not None else 0.0
+                log_debug(f"Calculated item_original_expense for item_id {item_id}: {item_original_expense}")
+
+                # --- 新增代码：在循环开始处获取 spec ---
+                cursor.execute("""
+                    SELECT spec
+                    FROM items
+                    WHERE item_id = ?
+                """, (item_id,))
+                spec_result = cursor.fetchone()
+                spec = float(spec_result[0]) if spec_result and spec_result[0] is not None else 1.0  # 默认 spec 为 1
+                log_debug(f"Retrieved spec for item_id {item_id}: {spec}")
+
+                # --- 修改后代码 ---
                 item_discount = 0
                 if is_completed and original_price and discount_price:
-                    item_discount = (original_price - discount_price) * actual_item_sales  # 单品返点
+                    item_discount = (original_price - discount_price) * spec * actual_item_sales  # 单品返点
+                    log_debug(f"Calculated item_discount for item_id {item_id}: {item_discount}")
+                    
                 item_actual_expense = item_original_expense - item_discount  # 单品实际支出
 
                 self.table.insertRow(row)

@@ -23,3 +23,6 @@ data/stockflow.db
 *.log
 *.tmp
 *.bak
+
+#打包文件夹
+dist/

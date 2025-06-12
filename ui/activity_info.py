@@ -170,6 +170,16 @@ class ActivityInfoWindow(CenteredMainWindow):
             add_activity(self.brand.brand_id, f"{self.year}-{self.month:02d}", True, None,
                         None, False, False, target_value, None, None)
             QMessageBox.information(self, "成功", "总销量目标已保存")
+            # 通知父窗口中的 ActivityCompletionWindow 刷新
+            parent = self.parent()
+            if parent and hasattr(parent, 'completion_windows'):
+                key = (self.brand.brand_id, self.year, self.month)
+                if key in parent.completion_windows:
+                    try:
+                        parent.completion_windows[key].load_completion_data()
+                        log_debug(f"自动刷新 ActivityCompletionWindow for brand: {self.brand.brand_name}, year: {self.year}, month: {self.month}")
+                    except Exception as e:
+                        log_debug(f"自动刷新 ActivityCompletionWindow 失败: {e}")
         except ValueError as e:
             QMessageBox.warning(self, "错误", f"请输入有效的金额: {str(e)}")
 
