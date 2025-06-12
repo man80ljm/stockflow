@@ -113,7 +113,7 @@ class ActivityInfoWindow(CenteredMainWindow):
             self.activity_table.setItem(row, 0, item0)
 
             # 第1列: 规格
-            item1 = QTableWidgetItem(spec or "")
+            item1 = QTableWidgetItem(str(spec) if spec is not None else "")
             item1.setTextAlignment(Qt.AlignCenter)
             self.activity_table.setItem(row, 1, item1)
 

@@ -252,7 +252,7 @@ class PurchaseDetailsWindow(QWidget):
                 date_str = datetime.datetime.strptime(purchase.date, "%Y-%m-%d").strftime("%Y年%m月%d日")
                 
                 items_to_set = [
-                    date_str, purchase.item_name, purchase.spec, purchase.unit,
+                    date_str, purchase.item_name, str(purchase.spec) if purchase.spec is not None else "", purchase.unit,
                     str(purchase.quantity), str(purchase.unit_price),
                     str(purchase.total_amount), purchase.remarks or ""
                 ]

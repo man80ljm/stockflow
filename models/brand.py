@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
-from database.db_setup import DB_PATH
+from database.db_setup import get_db_path
+DB_PATH = get_db_path()  # 动态获取路径
 
 class Brand:
     def __init__(self, brand_id, brand_name, created_at):

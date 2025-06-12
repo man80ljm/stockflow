@@ -1,6 +1,20 @@
 import sqlite3
 import os
 from pathlib import Path
+import sys  # 添加 sys 模块导入
+
+def get_db_path(base_path=None):
+    """动态获取数据库路径，基于 base_path 或 main.exe 所在目录"""
+    if base_path is None:
+        if getattr(sys, 'frozen', False):  # PyInstaller 打包环境
+            # main.exe 所在目录
+            base_path = Path(sys.executable).parent
+        else:
+            # 开发环境，stockflow/ 目录
+            base_path = Path(__file__).parent.parent
+    db_dir = base_path / "data"
+    db_dir.mkdir(parents=True, exist_ok=True)  # 确保 data 目录存在
+    return db_dir / "stockflow.db"
 
 # 基于项目根目录定义数据目录
 BASE_DIR = Path(__file__).parent.parent  # 指向 stockflow/ 目录
