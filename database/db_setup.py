@@ -27,8 +27,11 @@ def create_database():
         CREATE TABLE IF NOT EXISTS items (
             item_id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_name TEXT NOT NULL,
-            spec TEXT NOT NULL,
-            UNIQUE(item_name, spec)
+            spec INTEGER NOT NULL CHECK(spec > 0),  -- 修改：将 TEXT 改为 INTEGER，添加正整数约束
+            unit TEXT NOT NULL,
+            brand_id INTEGER NOT NULL,
+            UNIQUE(item_name, spec, unit, brand_id),  -- 更新 UNIQUE 约束，包含 unit 和 brand_id
+            FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE
         )
     """)
 
@@ -61,10 +64,11 @@ def create_database():
             need_total_target BOOLEAN,
             need_item_target BOOLEAN,
             target_value REAL NOT NULL,
-            original_price REAL,
-            discount_price REAL,
+            original_price REAL CHECK(original_price >= 0),  -- 新增：非负约束
+            discount_price REAL CHECK(discount_price >= 0),  -- 新增：非负约束
             FOREIGN KEY (brand_id) REFERENCES brands(brand_id) ON DELETE CASCADE,
             FOREIGN KEY (item_id) REFERENCES items(item_id)
+            UNIQUE(brand_id, month, is_total_target)  -- 新增：唯一约束
         )
     """)
 

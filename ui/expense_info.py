@@ -109,10 +109,23 @@ class ExpenseInfoWindow(QWidget):
             actual_total_sales = float(result[0]) if result and result[0] is not None else 0.0
             log_debug(f"Actual total sales: {actual_total_sales}")
 
+            # --- 修改代码：计算优惠返点 ---
             discount_total = 0.0
+            log_debug(f"Querying activities for brand_id: {self.brand.brand_id}, month: {self.year}-{self.month:02d}")
+            cursor.execute("""
+                SELECT a.activity_id, a.activity_type, a.original_price, a.discount_price,
+                    a.target_value, a.need_total_target, a.need_item_target, a.item_id,
+                    i.spec
+                FROM activities a
+                LEFT JOIN items i ON a.item_id = i.item_id
+                WHERE a.brand_id = ? AND a.month = ? AND a.is_total_target = 0
+            """, (self.brand.brand_id, f"{self.year}-{self.month:02d}"))
+            activities = cursor.fetchall()
+            log_debug(f"Activities retrieved: {len(activities)} records")
+
             for activity in activities:
                 activity_id, activity_type, original_price, discount_price, target_value, \
-                need_total_target, need_item_target, item_id = activity
+                need_total_target, need_item_target, item_id, spec = activity
 
                 is_completed = True
                 if need_total_target and actual_total_sales < total_target_value:
@@ -131,13 +144,15 @@ class ExpenseInfoWindow(QWidget):
                     if actual_item_sales < target_value:
                         is_completed = False
 
-                if is_completed and original_price and discount_price:
-                    if need_total_target:
-                        discount = (original_price - discount_price) * (actual_total_sales / total_target_value if total_target_value > 0 else 0)
-                    elif need_item_target and item_id:
-                        discount = (original_price - discount_price) * actual_item_sales
-                    discount_total += discount
-                    log_debug(f"Discount calculated for activity {activity_id}: {discount}")
+                if is_completed and original_price and discount_price and item_id:
+                    # 获取规格，默认为 1
+                    spec_value = float(spec) if spec else 1.0
+                    log_debug(f"Spec for item_id {item_id}: {spec_value}")
+                    # 计算单品返点
+                    item_discount = (original_price - discount_price) * spec_value * actual_item_sales
+                    discount_total += item_discount
+                    log_debug(f"Discount calculated for activity {activity_id}: {item_discount}")
+            # --- 结束修改代码 ---
 
             actual_expense = original_expense - discount_total
             log_debug(f"Final actual expense: {actual_expense}")

@@ -67,6 +67,15 @@ def delete_brand(brand_id):
 
 def add_item(item_name, spec, unit, brand_id):
     """添加商品，关联品牌"""
+    # --- 新增代码：验证 spec ---
+    try:
+        spec = int(spec)  # 确保 spec 是整数
+        if spec <= 0:
+            raise ValueError("规格必须为正整数")
+    except (ValueError, TypeError) as e:
+        logging.error(f"无效的规格值: {spec}, 错误: {e}")
+        raise ValueError("规格必须为正整数")
+
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -224,10 +233,46 @@ def get_monthly_activities(brand_id, year, month):
 def add_activity(brand_id, month, is_total_target, item_id, activity_type=None, 
                need_total_target=None, need_item_target=None, target_value=0,
                original_price=None, discount_price=None):
-    """添加活动记录"""
+    """添加或更新活动记录"""
+    # --- 验证价格（已有修改，保持不变） ---
+    if original_price is not None:
+        try:
+            original_price = float(original_price)
+            if original_price < 0:
+                raise ValueError("原价不能为负")
+        except (ValueError, TypeError) as e:
+            logging.error(f"无效的原价: {original_price}, 错误: {e}")
+            raise ValueError("原价必须为非负数")
+    if discount_price is not None:
+        try:
+            discount_price = float(discount_price)
+            if discount_price < 0:
+                raise ValueError("优惠价不能为负")
+        except (ValueError, TypeError) as e:
+            logging.error(f"无效的优惠价: {discount_price}, 错误: {e}")
+            raise ValueError("优惠价必须为非负数")
+
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # --- 新增代码：处理总目标更新 ---
+        if is_total_target:
+            cursor.execute("""
+                SELECT activity_id FROM activities
+                WHERE brand_id = ? AND month = ? AND is_total_target = 1
+            """, (brand_id, month))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute("""
+                    UPDATE activities
+                    SET target_value = ?, original_price = ?, discount_price = ?
+                    WHERE activity_id = ?
+                """, (target_value, original_price, discount_price, existing[0]))
+                conn.commit()
+                logging.debug(f"Updated total target for brand_id: {brand_id}, month: {month}")
+                return
+        # --- 结束新增代码 ---
+
         cursor.execute("""
             INSERT INTO activities (
                 brand_id, month, is_total_target, item_id, activity_type,
@@ -240,8 +285,9 @@ def add_activity(brand_id, month, is_total_target, item_id, activity_type=None,
               original_price, discount_price))
         
         conn.commit()
+        logging.debug(f"Inserted new activity for brand_id: {brand_id}, month: {month}")
     except sqlite3.Error as e:
-        logging.error(f"添加活动失败: {e}")
+        logging.error(f"添加或更新活动失败: {e}")
         raise
     finally:
         conn.close()

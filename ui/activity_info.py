@@ -170,16 +170,25 @@ class ActivityInfoWindow(CenteredMainWindow):
             add_activity(self.brand.brand_id, f"{self.year}-{self.month:02d}", True, None,
                         None, False, False, target_value, None, None)
             QMessageBox.information(self, "成功", "总销量目标已保存")
-            # 通知父窗口中的 ActivityCompletionWindow 刷新
+            # --- 修改代码：增强自动刷新 ---
+            # 通知父窗口中的 ActivityCompletionWindow 和 ExpenseInfoWindow 刷新
             parent = self.parent()
             if parent and hasattr(parent, 'completion_windows'):
                 key = (self.brand.brand_id, self.year, self.month)
                 if key in parent.completion_windows:
                     try:
                         parent.completion_windows[key].load_completion_data()
-                        log_debug(f"自动刷新 ActivityCompletionWindow for brand: {self.brand.brand_name}, year: {self.year}, month: {self.month}")
+                        log_activity_debug(f"自动刷新 ActivityCompletionWindow for brand: {self.brand.brand_name}, year: {self.year}, month: {self.month}")
                     except Exception as e:
-                        log_debug(f"自动刷新 ActivityCompletionWindow 失败: {e}")
+                        log_activity_debug(f"自动刷新 ActivityCompletionWindow 失败: {e}")
+            if parent and hasattr(parent, 'expense_windows'):
+                if key in parent.expense_windows:
+                    try:
+                        parent.expense_windows[key].load_expense_data()
+                        log_activity_debug(f"自动刷新 ExpenseInfoWindow for brand: {self.brand.brand_name}, year: {self.year}, month: {self.month}")
+                    except Exception as e:
+                        log_activity_debug(f"自动刷新 ExpenseInfoWindow 失败: {e}")
+            # --- 结束修改代码 ---
         except ValueError as e:
             QMessageBox.warning(self, "错误", f"请输入有效的金额: {str(e)}")
 
@@ -337,6 +346,11 @@ class AddItemActivityDialog(CenteredDialog):
         # 添加 need_item 的状态变化监听
         self.need_item.toggled.connect(self.update_target_value_state)
 
+        # --- 新增代码：监听活动类型变化 ---
+        self.activity_type.currentIndexChanged.connect(self.update_need_total_state)
+        # 初始化 need_total 状态
+        self.update_need_total_state()
+
         # 初始化目标值输入框状态（默认未勾选，禁用）
         self.update_target_value_state(False)
 
@@ -346,6 +360,17 @@ class AddItemActivityDialog(CenteredDialog):
         
         self.toggle_item_view() # 初始化时调用一次，确保界面正确
         self.update_buttons()   # 初始化时调用一次，确保按钮状态正确
+
+    def update_need_total_state(self):
+        """根据活动类型更新 '需完成总销量' 复选框状态"""
+        is_no_total_target = self.activity_type.currentText() == "案后结(不与总指标挂钩)"
+        if is_no_total_target:
+            self.need_total.setEnabled(False)
+            self.need_total.setChecked(False)  # 强制取消勾选
+            log_activity_debug("Disabled need_total for activity type: 案后结(不与总指标挂钩)")
+        else:
+            self.need_total.setEnabled(True)
+            log_activity_debug(f"Enabled need_total for activity type: {self.activity_type.currentText()}")
 
     # 添加 update_target_value_state 方法
     def update_target_value_state(self, checked):
